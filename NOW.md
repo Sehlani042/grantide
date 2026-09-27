@@ -1,0 +1,5 @@
+# Current state
+
+2026-09-27: v0.1.0-alpha.1 is implemented and locally verified. The standalone gateway, bilingual GUI, CLI, encrypted state, scoped policies, one-time approvals, temporary grants and audit are functional. Fake-upstream race/integration tests, vet and JavaScript syntax checks passed. Browser verification covered all four modes, approval, revocation, policy creation/editing, agent creation, credential configuration, language switching and a 390px viewport without horizontal overflow. CLI and real HTTP integration were exercised with fake credentials. macOS/Linux amd64+arm64 and Windows amd64 archives build successfully.
+
+Public distribution: `Sehlani042/grantide`, experimental alpha, MIT. GitHub Actions checks each code push on Linux, macOS and Windows. The local preview uses simulated accounts only. Next product work: user feedback on the console, agent integration ergonomics, operation-specific adapters and an independently reviewed isolation/deployment model. SSH, shell and MCP are not implemented. Existing Agent Vault contribution remains a separate project.

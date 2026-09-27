@@ -1,0 +1,173 @@
+const $ = (s) => document.querySelector(s);
+const esc = (v = '') => String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let lang = localStorage.getItem('grantide-language') || (navigator.language.startsWith('zh') ? 'zh' : 'en');
+const t = (zh, en) => lang === 'zh' ? zh : en;
+let token = sessionStorage.getItem('grantide-operator') || '';
+function useLoginFragment() {
+  const fragment = new URLSearchParams(location.hash.slice(1));
+  if(!fragment.has('token'))return false;
+  token=fragment.get('token');sessionStorage.setItem('grantide-operator',token);history.replaceState(null,'',location.pathname);return true;
+}
+useLoginFragment();
+let state, page = 'overview', busy = false, lastDemo = null, online = true, fingerprint = '';
+const modal = $('#modal');
+const modes = {
+  auto: {icon:'↗', zh:'自动放行', en:'Auto allow', desc:['在限定范围内，自主完成工作。','Let the agent work within a defined scope.']},
+  approval: {icon:'◇', zh:'逐次审批', en:'Ask every time', desc:['每次操作，经你确认后执行。','Review the exact request before every call.']},
+  lease: {icon:'◷', zh:'限时授权', en:'Temporary access', desc:['批准一段时间，也限定调用次数。','Grant a time window with a call limit.']},
+  deny: {icon:'⊘', zh:'明确禁止', en:'Always deny', desc:['命中即拒绝，其他规则不能覆盖。','An explicit boundary that other rules cannot override.']}
+};
+const pages = {overview:['总览','Overview','◈'],rules:['权限规则','Policies','≋'],approvals:['待审批','Approvals','◇'],leases:['临时授权','Active grants','◷'],connections:['连接管理','Connections','⌘'],audit:['操作记录','Activity','☷'],playground:['试验场','Playground','▷']};
+const statusName = (s) => ({pending:t('待你审批','Awaiting review'),executing:t('执行中','Executing'),completed:t('已完成','Completed'),denied:t('已阻止','Blocked'),rejected:t('已拒绝','Rejected'),failed:t('执行失败','Failed'),expired:t('已过期','Expired'),invalidated:t('授权已失效','Invalidated'),cancelled:t('已取消','Cancelled')}[s] || s);
+const badge = (mode) => `<span class="badge ${esc(mode)}"><span>${modes[mode]?.icon || '·'}</span>${esc(modes[mode] ? t(modes[mode].zh,modes[mode].en) : mode)}</span>`;
+const statusBadge = (s) => `<span class="status-badge ${esc(s)}">${esc(statusName(s))}</span>`;
+const agentName = (id) => id === '*' ? t('所有 Agent','All agents') : state.agents.find(a=>a.id===id)?.name || id;
+const serviceName = (id) => state.services.find(s=>s.id===id)?.name || id;
+const date = (v) => new Date(v).toLocaleTimeString(lang === 'zh' ? 'zh-CN' : 'en-US', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const remaining = (until) => { const n=Math.max(0,Math.ceil((new Date(until)-new Date(state.server_time))/1000));return `${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`; };
+const activeRule = (r) => r.enabled && (!r.expires_at || new Date(r.expires_at)>new Date(state.server_time));
+const activeLease = (l) => !l.revoked && l.remaining>0 && new Date(l.expires_at)>new Date(state.server_time);
+const button = (label,action,id='',cls='secondary') => `<button type="button" class="button ${cls}" data-action="${esc(action)}" data-id="${esc(id)}">${label}</button>`;
+const empty = (title,copy,action='') => `<div class="empty"><span class="empty-symbol">◎</span><h3>${title}</h3><p>${copy}</p>${action}</div>`;
+const heading = (eyebrow,title,copy,action='') => `<div class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p>${copy}</p></div>${action}</div>`;
+
+async function api(path, method='GET', data) {
+  const requestToken=token;
+  const r = await fetch(path, {method,headers:{Authorization:`Bearer ${requestToken}`,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
+  const out = await r.json();
+  if(requestToken!==token)throw new Error('Session changed; old response discarded');
+  if (!r.ok) { if(r.status===401) {sessionStorage.removeItem('grantide-operator');token='';showLogin();} throw new Error(out.error || `HTTP ${r.status}`); }
+  return out;
+}
+let toastTimer;
+function notify(message,error=false) {const el=$('#toast');el.textContent=message;el.className=error?'error':'';el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,5000);}
+function showLogin(error='') {
+  $('#app').hidden=true;$('#login').hidden=false;
+  $('#login').innerHTML=`<div class="login-card"><img src="/mark.svg" alt="Grantide"><div class="eyebrow">GRANTIDE / 允界</div><h1>${t('为自主行动，划清边界。','Autonomy, within your boundaries.')}</h1><p>${t('输入本机的 Operator token，进入权限控制台。','Enter your local operator token to open the access console.')}</p><form id="login-form"><label>${t('管理员凭证','Operator token')}<input name="token" type="password" autocomplete="off" required minlength="64" maxlength="64" placeholder="operator.token"></label><p class="form-error">${esc(error)}</p><button class="button primary" type="submit">${t('进入控制台','Open console')} <span>→</span></button></form><small>${t('启动程序后，打开私有目录里的 operator-url，或复制 operator.token 的内容。','After starting the server, open the link in your private operator-url file, or copy the contents of operator.token.')}</small></div>`;
+  $('#login-form').addEventListener('submit',async ev=>{ev.preventDefault();token=new FormData(ev.target).get('token').trim();sessionStorage.setItem('grantide-operator',token);try {await refresh(true);}catch(e){showLogin(e.message);}});
+}
+async function refresh(force=false) {
+  if (!token || (busy&&!force)) return;
+  try {
+    const next=await api('/admin/state');
+    const key=JSON.stringify({...next,server_time:''})+next.leases.map(l=>!l.revoked&&l.remaining>0&&new Date(l.expires_at)>new Date(next.server_time)).join()+next.rules.map(r=>r.enabled&&(!r.expires_at||new Date(r.expires_at)>new Date(next.server_time))).join();
+    const changed=key!==fingerprint||!online||force;
+    state=next;fingerprint=key;online=true;$('#login').hidden=true;$('#app').hidden=false;
+    if(changed)render();else document.querySelectorAll('[data-until]').forEach(el=>el.textContent=remaining(el.dataset.until));
+  }
+  catch(e){online=false;if($('#connection'))$('#connection').textContent=t('连接中断','Disconnected');if(force)throw e;}
+}
+function render() {
+  document.documentElement.lang=lang==='zh'?'zh-CN':'en';
+  const pending=state.requests.filter(r=>r.status==='pending');
+  $('#nav').innerHTML=Object.entries(pages).filter(([key])=>key!=='playground'||state.demo).map(([key,v])=>`<button class="nav-item ${page===key?'active':''}" data-action="navigate" data-id="${key}"><span class="nav-icon">${v[2]}</span><span>${t(v[0],v[1])}</span>${key==='approvals'&&pending.length?`<span class="count">${pending.length}</span>`:''}</button>`).join('');
+  $('#crumb').textContent=t(pages[page][0],pages[page][1]);$('#language').textContent=lang==='zh'?'EN':'中文';
+  $('#workspace-label').textContent=t('本机工作区','Local workspace');$('#boundary-title').textContent=t('默认拒绝，明确授权。','Closed until you open it.');$('#boundary-copy').textContent=t('只有匹配规则的请求，才能通过这道边界。','Only requests covered by your policies can cross this boundary.');
+  $('#connection').innerHTML=`<span class="status-dot"></span>${online?t('网关在线','Gateway online'):t('连接中断','Disconnected')}`;
+  $('#demo-banner').innerHTML=state.demo?`<div class="demo-banner"><span class="badge demo">SANDBOX</span><span>${t('演示环境 · 所有示例只访问模拟 API，不连接真实账号。','Sandbox · Example calls use a simulated API. No real accounts connected.')}</span><button data-action="navigate" data-id="playground">${t('开始体验','Try it out')} →</button></div>`:'';
+  const views={overview:overviewView,rules:rulesView,approvals:approvalsView,leases:leasesView,connections:connectionsView,audit:auditView,playground:playgroundView};
+  $('#main').innerHTML=views[page]();$('#footer').textContent=t('允界 Grantide · 本机运行 · 规则版本 ','Grantide · Runs locally · Policy revision ')+state.revision;
+}
+function overviewView() {
+  const pending=state.requests.filter(r=>r.status==='pending').length,active=state.leases.filter(activeLease).length;
+  return `${heading('YOUR AUTONOMY, YOUR BOUNDARIES',t('让 AI 自主，也让你放心。','Give agents room. Keep control.'),t('把每次调用交给清楚的规则，把关键决定留在你手里。','Clear policies for every call. Important decisions stay with you.'),button(t('＋ 新建规则','＋ New policy'),'new-rule','','primary'))}
+  <div class="stats-grid"><div class="stat"><span>${t('生效规则','Enabled policies')}</span><strong>${state.rules.filter(activeRule).length}<small>/ ${state.rules.length}</small></strong><p>${t('按 Agent、服务和操作划定范围','Scoped by agent, service and operation')}</p></div><div class="stat warm"><span>${t('等待你的决定','Waiting for you')}</span><strong>${pending}<small>${t('个请求','requests')}</small></strong><button data-action="navigate" data-id="approvals">${t('前往审批','Review requests')} →</button></div><div class="stat"><span>${t('正在生效的临时授权','Active temporary grants')}</span><strong>${active}<small>${t('项授权','grants')}</small></strong><p>${t('时间与次数，双重约束','Bounded by time and number of calls')}</p></div></div>
+  <section class="panel"><div class="section-title"><div><h2>${t('四种方式，一道边界','Four modes. One boundary.')}</h2><p>${t('每种权限都由网关执行，不依赖 Agent 自觉遵守。','The gateway enforces each decision on submitted requests.')}</p></div><span class="micro">POLICY MODES</span></div><div class="mode-grid">${Object.entries(modes).map(([k,m])=>`<button class="mode-card ${k}" data-action="${state.demo?'demo':'new-rule'}" data-id="${k}"><span class="mode-symbol">${m.icon}</span><strong>${t(m.zh,m.en)}</strong><p>${t(...m.desc)}</p><span class="mode-link">${state.demo?t('试一次','Try a call'):t('配置规则','Configure')} ↗</span></button>`).join('')}</div></section>
+  <div class="overview-bottom"><section class="panel"><div class="section-title"><h2>${t('最近请求','Recent requests')}</h2>${button(t('查看记录','Activity'),'navigate','audit','text')}</div>${requestTable(state.requests.slice(0,5))}</section><section class="panel boundary-panel"><div class="boundary-art"><span>↗</span><div class="boundary-orbit"></div><i>◈</i></div><div class="eyebrow">DEFAULT DENY</div><h2>${t('没有规则，就不放行。','No policy, no access.')}</h2><p>${t('禁止规则优先。审批只释放你确认的请求。授权到期后，新调用需要重新申请。','Deny rules take precedence. Approval releases the reviewed request. Expired grants require a new decision.')}</p><button class="button secondary" data-action="navigate" data-id="rules">${t('查看权限边界','Explore your policies')} →</button></section></div>`;
+}
+function requestTable(items) {
+  if(!items.length)return empty(t('还没有请求','No requests yet'),t('从试验场发送一个请求，看看规则如何工作。','Send a request to see your policies in action.'),state.demo?button(t('进入试验场','Open playground'),'navigate','playground'): '');
+  return `<div class="table-wrap"><table><thead><tr><th>${t('操作','Operation')}</th><th>Agent</th><th>${t('状态','Status')}</th><th>${t('时间','Time')}</th></tr></thead><tbody>${items.map(r=>`<tr class="clickable" data-action="view-request" data-id="${esc(r.id)}"><td><div class="request-operation"><span class="method">${esc(r.call.method)}</span><code>${esc(r.call.path)}</code></div><small>${esc(serviceName(r.call.service_id))}</small></td><td>${esc(agentName(r.agent_id))}</td><td>${statusBadge(r.status)}</td><td class="mono muted">${date(r.created_at)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+function rulesView() {
+  return heading('POLICIES',t('权限规则','Your policies'),t('给自主行动划范围。修改规则会撤销现有临时授权，并使待审批请求失效。','Define the scope of autonomy. Changes invalidate pending requests and existing grants.'),button(t('＋ 新建规则','＋ New policy'),'new-rule','','primary'))+
+  `<div class="info-strip"><span>◈</span>${t('禁止优先 → 逐次审批 → 限时授权 → 自动放行；没有匹配项则拒绝。路径按完整分段匹配。','Priority: deny → per-call approval → temporary access → auto. No match denies. Paths match whole segments.')}</div><section class="panel">${!state.rules.length?empty(t('从第一条规则开始','Start with one policy'),t('先添加服务和 Agent，再定义它能做什么。','Add a service and agent, then define what it can do.')):`<div class="table-wrap"><table><thead><tr><th>${t('规则与范围','Policy / scope')}</th><th>Agent</th><th>${t('权限模式','Mode')}</th><th>${t('状态','Status')}</th><th></th></tr></thead><tbody>${state.rules.map(r=>`<tr><td><strong>${esc(r.name)}</strong><div class="scope"><span>${esc(serviceName(r.service_id))}</span><code>${esc(r.methods.join(', '))} ${esc(r.path_prefix)}</code></div>${r.expires_at?`<small>${t('有效至','Until')} ${esc(new Date(r.expires_at).toLocaleString())}</small>`:''}</td><td>${esc(agentName(r.agent_id))}</td><td>${badge(r.mode)}${r.mode==='lease'?`<small class="block">${r.lease_seconds/60} min · ${r.max_uses} ${t('次','calls')}</small>`:''}</td><td><span class="dot-label ${activeRule(r)?'enabled':''}">${!r.enabled?t('已停用','Disabled'):activeRule(r)?t('已启用','Enabled'):t('已到期','Expired')}</span></td><td>${button(t('编辑','Edit'),'edit-rule',r.id,'text')}</td></tr>`).join('')}</tbody></table></div>`}</section>`;
+}
+function approvalsView() {
+  const items=state.requests.filter(r=>r.status==='pending');
+  return heading('HUMAN IN THE LOOP',t('关键操作，由你决定。','You have the final say.'),t('核对请求内容后再批准。批准一次只执行当前请求；临时授权允许范围内的后续调用。','Review the payload. One-time approval executes only this request; a grant also allows future calls in its scope.'))+
+  (items.length?`<div class="approval-list">${items.map(r=>requestCard(r)).join('')}</div>`:`<section class="panel">${empty(t('暂时没有待审批请求','Nothing waiting for approval'),t('需要你决定的时候，请求会出现在这里。','Requests that need your decision will appear here.'),state.demo?button(t('模拟一次生产发布','Simulate a deployment'),'demo','approval'): '')}</section>`);
+}
+function requestCard(r) {
+  const rule=state.rules.find(x=>x.id===r.rule_id);
+  return `<article class="approval-card"><div class="approval-header"><div>${badge(r.mode)}<h2>${esc(rule?.name||serviceName(r.call.service_id))}</h2><p>${esc(agentName(r.agent_id))} <span>·</span> ${esc(r.id)}</p></div><div class="deadline">${t('审批剩余','Review within')}<strong data-until="${esc(r.expires_at)}">${remaining(r.expires_at)}</strong></div></div>${payload(r)}${r.mode==='lease'?`<div class="grant-scope"><strong>${t('临时授权范围','Grant scope')}</strong><p>${esc(agentName(r.agent_id))} · ${esc(rule?.methods.join(', '))} ${esc(rule?.path_prefix)} · ${rule?.lease_seconds/60} min · ${t('最多','up to')} ${rule?.max_uses} ${t('次（包括当前请求）','calls (including this request)')}</p></div>`:''}<div class="approval-actions">${button(t('拒绝','Reject'),'reject',r.id,'danger-quiet')}<div>${button(t('仅批准这一次','Approve once'),'approve',r.id)}${r.mode==='lease'?button(t('批准临时授权','Grant temporary access'),'grant',r.id,'primary'):''}</div></div></article>`;
+}
+function payload(r) {
+  return `<div class="payload"><div class="payload-url"><span class="method">${esc(r.call.method)}</span><code>${esc(r.origin)}${esc(r.call.path)}</code></div><div class="payload-columns"><div><label>QUERY</label><pre>${esc(JSON.stringify(r.call.query||{},null,2))}</pre></div><div><label>BODY · JSON</label><pre>${esc(pretty(r.call.body)||t('无请求体','No request body'))}</pre></div></div></div>`;
+}
+function pretty(value) {try{return JSON.stringify(JSON.parse(value),null,2);}catch{return value;}}
+function leasesView() {
+  return heading('TIME-BOUND ACCESS',t('授权有期限，随时可收回。','A little access. For a little while.'),t('剩余次数包括可继续执行的新请求。撤销阻止后续调用，已发出的操作无法撤回。','Remaining calls are available for new requests. Revocation stops future dispatches; it cannot undo calls already sent.'))+
+  (state.leases.length?`<div class="lease-grid">${state.leases.map(l=>`<article class="panel lease-card ${activeLease(l)?'':'inactive'}"><div class="section-title">${badge('lease')}<span class="micro">${l.revoked?t('已撤销','REVOKED'):activeLease(l)?t('生效中','ACTIVE'):t('已结束','ENDED')}</span></div><h2>${esc(state.rules.find(r=>r.id===l.rule_id)?.name||l.rule_id)}</h2><p>${esc(agentName(l.agent_id))} → ${esc(serviceName(l.service_id))}</p><code class="lease-scope">${esc(l.methods.join(', '))} ${esc(l.path_prefix)}</code><div class="lease-metrics"><div><strong ${activeLease(l)?`data-until="${esc(l.expires_at)}"`:''}>${activeLease(l)?remaining(l.expires_at):'—'}</strong><span>${t('剩余时间','Time left')}</span></div><div><strong>${l.remaining}<small> / ${l.total}</small></strong><span>${t('剩余次数','Calls remaining')}</span></div></div><div class="lease-footer"><small>${t('到期','Expires')} ${date(l.expires_at)}</small>${activeLease(l)?button(t('立即撤销','Revoke now'),'revoke',l.id,'danger-quiet'):''}</div></article>`).join('')}</div>`:`<section class="panel">${empty(t('没有临时授权','No temporary grants'),t('批准一个限时请求后，可以在这里查看倒计时、剩余次数和撤销入口。','After granting temporary access, track its expiry and call limit here.'),state.demo?button(t('试试限时授权','Try temporary access'),'demo','lease'): '')}</section>`);
+}
+function connectionsView() {
+  return heading('CONNECTIONS',t('连接 Agent 与它需要的服务。','Connect agents to their services.'),t('Agent 只持有自己的访问凭证。上游密钥保存在网关里，执行获准请求时才注入。','Agents hold their own access token. The gateway injects upstream credentials only into authorized calls.'))+
+  `<div class="connections-grid"><section class="panel"><div class="section-title"><div><h2>Agents</h2><p>${t('每个身份，独立授权','Separate identities, separate access')}</p></div>${button('＋ '+t('添加','Add'),'new-agent','','primary')}</div>${state.agents.length?state.agents.map(a=>`<div class="connection-row"><div class="entity-icon">${esc(a.name.slice(0,1).toUpperCase())}</div><div class="entity-info"><strong>${esc(a.name)}</strong><code>${esc(a.id)}</code></div><button class="toggle ${a.enabled?'on':''}" data-action="toggle-agent" data-id="${esc(a.id)}" aria-label="${esc(a.name)} ${a.enabled?'disable':'enable'}"><span></span></button></div>`).join(''):empty(t('还没有 Agent','No agents yet'),t('添加后会显示一次专属 token。','Add one to receive its token, shown once.'))}</section><section class="panel"><div class="section-title"><div><h2>${t('服务','Services')}</h2><p>${t('预先确定请求的目的地','Configure upstream destinations')}</p></div>${button('＋ '+t('添加','Add'),'new-service','','primary')}</div>${state.services.length?state.services.map(s=>`<div class="connection-row"><div class="entity-icon service">↗</div><div class="entity-info"><strong>${esc(s.name)} <span class="tiny-dot ${s.enabled?'on':''}"></span></strong><code>${esc(s.origin)}</code><small>${s.secret_set?t('凭证已加密保存','Credential encrypted'):t('未配置凭证','No credential configured')}${s.allow_private?' · '+t('允许内网','Private access allowed'):''}</small></div>${button(t('编辑','Edit'),'edit-service',s.id,'text')}</div>`).join(''):empty(t('还没有服务','No services yet'),t('指定一个 API 的 origin，建立访问目标。','Add an API origin as an allowed destination.'))}</section></div><div class="info-strip">${t('部署边界：将网关的数据目录放在 Agent 无法读取的位置。此程序约束经过它的 HTTP 请求；本机其他命令与直连网络需由独立 sandbox 控制。','Deployment boundary: keep the gateway data directory outside agent access. This program controls HTTP calls submitted to it; other commands and direct network access require a separate sandbox.')}</div>`;
+}
+function auditView() {
+  return heading('ACTIVITY',t('每次决定，都有迹可循。','Every decision leaves a trace.'),t('保存最近 500 条元数据记录。请求正文和上游响应只保留在本次运行的内存中。','The latest 500 metadata events are persisted. Request bodies and responses stay only in this process’s memory.'))+
+  `<section class="panel">${state.audit.length?`<div class="table-wrap"><table><thead><tr><th>${t('时间','Time')}</th><th>${t('事件','Event')}</th><th>${t('操作者','Actor')}</th><th>${t('详情','Details')}</th></tr></thead><tbody>${[...state.audit].reverse().map(e=>`<tr><td class="mono muted">${date(e.at)}</td><td><code class="event-name">${esc(e.action)}</code></td><td>${esc(e.actor==='operator'?t('管理员','Operator'):agentName(e.actor))}</td><td class="audit-detail">${esc(e.detail)}<small>${esc(e.target)}</small></td></tr>`).join('')}</tbody></table></div>`:empty(t('记录从第一次操作开始','Your history starts here'),t('配置变更、请求和授权决定会自动记录。','Configuration changes, requests and decisions are recorded automatically.'))}</section>`;
+}
+function playgroundView() {
+  return heading('SAFE TO EXPLORE',t('亲手试一次，边界就清楚了。','Try it. See the boundary work.'),t('这里的四个例子只调用内置模拟服务。可自由尝试批准、拒绝、到期和撤销。','These examples only call a built-in simulated service. Explore approval, rejection, expiry and revocation.'))+
+  `<div class="scenario-grid">${Object.entries(modes).map(([k,m])=>`<article class="panel scenario ${k}"><span class="mode-symbol">${m.icon}</span>${badge(k)}<h2>${({auto:t('读取监控','Read metrics'),approval:t('发布生产版本','Deploy to production'),lease:t('临时排查服务','Run diagnostics'),deny:t('删除生产数据','Delete production data')})[k]}</h2><code>${({auto:'GET /metrics',approval:'POST /deploy',lease:'POST /diagnostics',deny:'DELETE /database'})[k]}</code><p>${t(...m.desc)}</p>${button(t('发送模拟请求','Send simulated request')+' →','demo',k,k==='deny'?'danger-quiet':'secondary')}</article>`).join('')}</div>${lastDemo?`<section class="panel demo-result"><div class="section-title"><h2>${t('上一个请求','Last request')}</h2>${statusBadge((state.requests.find(r=>r.id===lastDemo.id)||lastDemo).status)}</div>${requestTable([state.requests.find(r=>r.id===lastDemo.id)||lastDemo])}${lastDemo.status==='pending'?button(t('前往审批','Go to approvals'),'navigate','approvals','primary'):''}</section>`:''}<div class="info-strip">${t('示例也遵守你现在的规则。若你修改了 sandbox 规则，示例结果会随之变化。','Examples follow your current policies. Editing sandbox rules changes their outcomes.')}</div>`;
+}
+
+function openModal(title,description,body,formId='') {
+  $('#modal-content').innerHTML=`<div class="modal-heading"><div><h2>${title}</h2><p>${description}</p></div><button class="icon-button" data-action="close" aria-label="Close">×</button></div>${formId?`<form id="${formId}">${body}<p class="form-error" id="form-error"></p><div class="modal-actions">${button(t('取消','Cancel'),'close')}<button class="button primary" type="submit">${t('保存','Save')}</button></div></form>`:body}`;if(!modal.open)modal.showModal();
+}
+function field(label,name,value='',options='') { return `<label>${label}<input name="${name}" value="${esc(value)}" ${options}></label>`; }
+function select(label,name,items,selected) {return `<label>${label}<select name="${name}" aria-label="${esc(label)}">${items.map(([v,l])=>`<option value="${esc(v)}" ${v===selected?'selected':''}>${esc(l)}</option>`).join('')}</select></label>`;}
+const enabledField = (value) => `<label class="check-label"><input type="checkbox" name="enabled" ${value?'checked':''}>${t('启用','Enabled')}</label>`;
+function ruleForm(id,initialMode='auto') {
+  if(!state.services.length){notify(t('请先在连接管理中添加服务。','Add a service in Connections first.'));page='connections';render();return;}
+  const r=state.rules.find(x=>x.id===id)||{id:'',name:'',agent_id:'*',service_id:state.services[0].id,methods:['GET'],path_prefix:'/',mode:initialMode,lease_seconds:900,max_uses:3,enabled:true};
+  openModal(id?t('编辑权限规则','Edit policy'):t('新建权限规则','New policy'),t('保存会使已有临时授权和待审批请求失效。','Saving invalidates existing grants and pending requests.'),`
+    ${field(t('规则名称','Policy name'),'name',r.name,'required maxlength="100" placeholder="Read production metrics"')}
+    <div class="form-grid">${select('Agent','agent_id',[['*',t('所有 Agent','All agents')],...state.agents.map(a=>[a.id,a.name])],r.agent_id)}${select(t('服务','Service'),'service_id',state.services.map(s=>[s.id,s.name]),r.service_id)}</div>
+    ${select(t('权限模式','Permission mode'),'mode',Object.entries(modes).map(([k,m])=>[k,t(m.zh,m.en)]),r.mode)}
+    <fieldset class="method-field"><legend>${t('允许匹配的 HTTP 方法','HTTP methods to match')}</legend><div class="method-picker">${['GET','HEAD','POST','PUT','PATCH','DELETE','OPTIONS'].map(m=>`<label><input type="checkbox" name="methods" value="${m}" ${r.methods.includes(m)?'checked':''}>${m}</label>`).join('')}</div></fieldset>
+    ${field(t('路径前缀','Path prefix'),'path_prefix',r.path_prefix,'required placeholder="/v1/projects"')}<small>${t('/v1 匹配 /v1 和 /v1/...，不会匹配 /v10。/ 表示该服务所有路径。','/v1 matches /v1 and /v1/..., never /v10. / covers all paths on the service.')}</small>
+    <div class="form-grid lease-fields">${field(t('临时授权时长（秒）','Grant duration (seconds)'),'lease_seconds',r.lease_seconds||900,'type="number" min="1" max="3600" required')}${field(t('最多调用次数','Maximum calls'),'max_uses',r.max_uses||3,'type="number" min="1" max="100" required')}</div>
+    ${field(t('规则到期时间（选填，本机时间）','Policy expiry (optional, local time)'),'expires_at',r.expires_at?localDatetime(r.expires_at):'','type="datetime-local"')}<small>${t('到期后的匹配请求会被拒绝，不会回退到更宽松的规则。','After expiry, matching requests are denied instead of falling through to a weaker rule.')}</small>${enabledField(r.enabled)}`, 'rule-form');
+  const form=$('#rule-form');const update=()=>form.querySelector('.lease-fields').hidden=form.elements.mode.value!=='lease';update();form.elements.mode.addEventListener('change',update);
+  form.addEventListener('submit',ev=>saveForm(ev,async data=>{const expiry=data.get('expires_at');await api('/admin/rules','POST',{id:r.id,name:data.get('name'),agent_id:data.get('agent_id'),service_id:data.get('service_id'),mode:data.get('mode'),methods:data.getAll('methods'),path_prefix:data.get('path_prefix'),lease_seconds:Number(data.get('lease_seconds')),max_uses:Number(data.get('max_uses')),enabled:data.has('enabled'),...(expiry?{expires_at:new Date(expiry).toISOString()}:{})});}));
+}
+function localDatetime(v) {const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
+function serviceForm(id) {
+  const s=state.services.find(x=>x.id===id)||{id:'',name:'',origin:'',enabled:true,auth_header:'Authorization',auth_prefix:'Bearer ',allow_private:false};
+  openModal(id?t('编辑服务','Edit service'):t('添加服务','Add service'),t('只能向这里配置的 origin 发出请求。密钥不会返回给 Agent。','Requests can target only configured origins. Credentials are not returned by the management API.'),`${s.id?`<p class="service-id">Service ID: <code>${esc(s.id)}</code></p>`:''}${field(t('服务名称','Service name'),'name',s.name,'required maxlength="100"')}${field('Origin','origin',s.origin,'required placeholder="https://api.example.com"')}<div class="form-grid">${field(t('认证 Header','Auth header'),'auth_header',s.auth_header||'','placeholder="Authorization"')}${field(t('认证前缀','Auth prefix'),'auth_prefix',s.auth_prefix||'','placeholder="Bearer "')}</div><label>${t('上游密钥','Upstream credential')}<input type="password" name="secret" autocomplete="new-password" placeholder="${s.secret_set?t('留空保留已保存密钥','Leave blank to keep saved credential'):t('可选','Optional')}"></label>${s.secret_set?`<label class="check-label"><input type="checkbox" name="clear_secret">${t('清除已保存密钥','Clear saved credential')}</label>`:''}<label class="check-label"><input type="checkbox" name="allow_private" ${s.allow_private?'checked':''}>${t('允许内网地址及 HTTP（仅信任的内部服务）','Allow private destinations and HTTP (trusted internal services only)')}</label>${enabledField(s.enabled)}`,'service-form');
+  $('#service-form').addEventListener('submit',ev=>saveForm(ev,async d=>{await api('/admin/services','POST',{service:{id:s.id,name:d.get('name'),origin:d.get('origin'),auth_header:d.get('auth_header'),auth_prefix:d.get('auth_prefix'),secret:d.get('secret'),allow_private:d.has('allow_private'),enabled:d.has('enabled')},clear_secret:d.has('clear_secret')});}));
+}
+function agentForm() {
+  openModal(t('添加 Agent','Add agent'),t('为每个 Agent 单独创建身份，方便授权和撤销。','Create a separate identity for each agent.'),field(t('名称','Name'),'name','','required maxlength="100" placeholder="My coding agent"'),'agent-form');
+  $('#agent-form').addEventListener('submit',async ev=>{ev.preventDefault();try{const d=new FormData(ev.target);const out=await api('/admin/agents','POST',{name:d.get('name'),enabled:true});await refresh(true);openModal(t('保存 Agent token','Save this agent token'),t('只显示这一次。它可提交请求，无法批准自己的请求。','Shown once. It submits requests but cannot approve them.'),`<div class="token-box"><code>${esc(out.token)}</code></div><p class="muted">${t('给 Agent 配置以下环境变量，然后用 grantide call 发起调用。','Set these environment variables for your agent, then use grantide call.')}</p><pre class="code-block">GRANTIDE_URL=${esc(location.origin)}
+GRANTIDE_TOKEN=${esc(out.token)}</pre><div class="modal-actions">${button(t('我已保存','I saved it'),'close','','primary')}</div>`);}catch(e){$('#form-error').textContent=e.message;}});
+}
+async function saveForm(ev,save) {ev.preventDefault();const submit=ev.target.querySelector('[type=submit]');submit.disabled=true;try{await save(new FormData(ev.target));modal.close();await refresh(true);notify(t('已保存，旧授权已失效。','Saved. Previous authorizations are invalidated.'));}catch(e){$('#form-error').textContent=e.message;}finally{submit.disabled=false;}}
+function viewRequest(id) {const r=state.requests.find(x=>x.id===id);if(!r)return;openModal(t('请求详情','Request detail'),`${agentName(r.agent_id)} · ${r.id}`,`${statusBadge(r.status)}${payload(r)}<p class="muted">${esc(r.reason)}</p>${r.result?`<h3>HTTP ${r.result.status}${r.result.truncated?' · truncated':''}</h3><pre class="code-block">${esc(pretty(r.result.body))}</pre>`:''}<div class="modal-actions">${button(t('关闭','Close'),'close')}</div>`);}
+
+document.addEventListener('click',async ev=>{
+  const el=ev.target.closest('[data-action]');if(!el)return;const {action,id}=el.dataset;
+  if(action==='navigate'){page=id;render();window.scrollTo(0,0);return;}
+  if(action==='close'){modal.close();return;}
+  if(action==='new-rule'){ruleForm('',modes[id]?id:'auto');return;}
+  if(action==='edit-rule'){ruleForm(id);return;}
+  if(action==='new-service'||action==='edit-service'){serviceForm(id);return;}
+  if(action==='new-agent'){agentForm();return;}
+  if(action==='view-request'){viewRequest(id);return;}
+  if(busy)return;busy=true;el.disabled=true;
+  try {
+    if(action==='demo'){lastDemo=await api('/admin/demo','POST',{mode:id});notify(lastDemo.status==='pending'?t('请求已进入审批队列。','Request is waiting for review.'):statusName(lastDemo.status));if(lastDemo.status==='pending')page='approvals';else page='playground';}
+    if(['approve','grant','reject'].includes(action)){await api(`/admin/requests/${id}/decision`,'POST',{decision:{approve:'once',grant:'lease',reject:'reject'}[action]});notify(action==='reject'?t('已拒绝请求。','Request rejected.'):t('已批准并执行。','Approved and dispatched.'));}
+    if(action==='revoke'){await api(`/admin/leases/${id}/revoke`,'POST',{});notify(t('临时授权已撤销。','Grant revoked.'));}
+    if(action==='toggle-agent'){const a=state.agents.find(x=>x.id===id);await api(`/admin/agents/${id}`,'PUT',{name:a.name,enabled:!a.enabled});notify(t('身份已更新，旧授权已失效。','Identity updated. Previous authorizations invalidated.'));}
+    await refresh(true);
+  }catch(e){notify(e.message,true);}finally{busy=false;el.disabled=false;}
+});
+$('#language').addEventListener('click',()=>{lang=lang==='zh'?'en':'zh';localStorage.setItem('grantide-language',lang);if(state)render();});
+$('#logout').addEventListener('click',()=>{sessionStorage.removeItem('grantide-operator');token='';state=null;modal.close();showLogin();});
+modal.addEventListener('click',ev=>{if(ev.target===modal)modal.close();});
+window.addEventListener('hashchange',()=>{if(useLoginFragment())refresh(true).catch(e=>showLogin(e.message));});
+if(token)refresh(true).catch(e=>showLogin(e.message));else showLogin();
+setInterval(()=>refresh(),2000);

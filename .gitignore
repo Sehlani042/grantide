@@ -1,0 +1,9 @@
+/bin/
+/dist/
+/.local/
+/.dev-port
+*.log
+.DS_Store
+/test-results/
+/output/
+/.playwright-cli/
