@@ -31,7 +31,7 @@ func main() {
 }
 func run() error {
 	if len(os.Args) < 2 {
-		fmt.Println("Grantide · 允界\n\n  grantide serve [--demo] [--data-dir PATH] [--port PORT]\n  grantide call --service ID --method GET --path /metrics [--body JSON]\n  grantide credential --service ID --method GET --path /metrics [--wait 5m]\n  grantide credential --id REQUEST_ID\n  grantide browser-login --site ID --browser PROFILE --tab TAB_ID\n  grantide version\n\nAgent CLI reads GRANTIDE_URL and GRANTIDE_TOKEN from the environment.")
+		fmt.Println("Grantide · 允界\n\n  grantide serve [--demo] [--data-dir PATH] [--port PORT]\n  grantide call --service ID --method GET --path /metrics [--body JSON]\n  grantide credential --service ID --method GET --path /metrics [--wait 5m]\n  grantide credential --id REQUEST_ID\n  grantide browser-login --site ID --browser PROFILE --tab TAB_ID\n  grantide web-login --list | --grant REF | --id RUN [--wait 30s]\n  grantide version\n\nAgent CLI reads GRANTIDE_URL and GRANTIDE_TOKEN from the environment.")
 		return nil
 	}
 	switch os.Args[1] {
@@ -39,6 +39,8 @@ func run() error {
 		return serve(os.Args[2:])
 	case "call":
 		return call(os.Args[2:])
+	case "web-login":
+		return webLogin(os.Args[2:])
 	case "browser-login":
 		return browserLogin(os.Args[2:])
 	case "credential":
@@ -56,6 +58,8 @@ func serve(args []string) error {
 	f := flag.NewFlagSet("serve", flag.ContinueOnError)
 	dir := f.String("data-dir", filepath.Join(base, "grantide"), "private state directory")
 	demo := f.Bool("demo", false, "seed fake demo services on empty state")
+	worker := f.String("browser-worker", "", "absolute path to the trusted browser worker entry.mjs")
+	node := f.String("browser-node", "", "absolute path to Node.js")
 	port := f.Int("port", 0, "loopback port; 0 remembers an available random port")
 	if err := f.Parse(args); err != nil {
 		return err
@@ -86,6 +90,14 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *worker != "" {
+		runner, err := gateway.NewBrowserRunner(*node, *worker)
+		if err != nil {
+			return err
+		}
+		engine.SetLoginRunner(runner)
+	}
+	defer engine.CloseLogins()
 	selected := *port
 	portFile := filepath.Join(*dir, "port")
 	if selected == 0 {

@@ -1,5 +1,11 @@
 # Current state
 
+2026-09-29 v0.4 development: user clarified that saved credentials must be used by an automatic login component; manual handoff alone was insufficient. Added encrypted website accounts, account/origin/agent/expiry/use-bound grants, a pipe-connected controlled Chromium worker, operator-only CAPTCHA/MFA resume, and `web-login` CLI. Optional exact-instance read scope returns only fixed structured inventory fields. No ordinary browser session export, cookies, screenshots or raw DOM are exposed.
+
+Verified: Go race tests/vet, fake-browser ordinary login and challenge flow, redirect/write restrictions, result filtering, and local GUI fake credential save plus grant form. The fake GUI account is removed after inspection. Real CloudCone credential entry, CAPTCHA, authentication markers and live inventory extraction remain pending. This component cannot protect against same-OS-user file/debugger/screen access. See docs/CONTROLLED-LOGIN.md for invocation, provenance and limits.
+
+## Prior v0.3 evidence
+
 2026-09-29: v0.3.0-alpha.1 adds browser login coordination. The GUI has a browser login inbox and operator-configured HTTPS sites with an agent allowlist; CLI `browser-login` binds agent/site/browser/profile/tab/conversation. Human confirmation and agent verification are separate; handoffs expire after 15 minutes, cancel, invalidate on config changes and disappear on restart. No browser password/OTP/cookie collection; no independent browser lock or automatic cross-chat messaging. Existing HTTP API rules and credential entry remain functional.
 
 Verified this increment: race tests, vet, JS syntax and build; operator/agent separation, exact context/origin, duplicate/concurrency handling, failed-save behavior, lifecycle and no dispatch. In the local GUI, a clearly labeled fake handoff moved from waiting to verification_required, and the agent CLI observed that state. This is protocol/UI verification, not a real website sign-in.

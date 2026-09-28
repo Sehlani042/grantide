@@ -7,3 +7,5 @@
 /test-results/
 /output/
 /.playwright-cli/
+/node_modules/
+/browser-worker/node_modules/

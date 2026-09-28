@@ -11,3 +11,8 @@ Browser: exercise four modes, approve/reject, grant/revoke lease, edit a rule, a
 
 ## Browser handoff verification (v0.3)
 Test operator-only confirmation, agent-only verification, actor allowlists, immutable context, exact final origin, duplicate/concurrent tab claims, expiry in both active states, cancellation, failed login, config invalidation, persistence failures and no dispatch. Browser checks must cover human-confirmation UI and status distinctions. A fake lifecycle and a real Tencent Cloud sign-in must be reported separately; manual completion remains required for the real account.
+
+## Controlled login (v0.4)
+Go race tests cover encrypted account persistence and sanitized snapshots, cross-agent isolation, atomic budgets, audit-save failure, configuration/revocation cancellation, deadline expiry, operator-only resume, restart invalidation, secret/error protocol filtering and credential transport via stdin. `npm test --prefix browser-worker` exercises the actual workflow against browser-routed fake CloudCone pages: automatic ordinary login, CAPTCHA pause, false human confirmation, credential-bearing redirect rejection and fixed inventory result filtering. No fake credentials are sent to the real provider.
+
+Local GUI: save fake website account, inspect masked/cleared input behavior and grant form. Remove the fake account afterward. Real CloudCone login and live inventory extraction remain separate acceptance gates requiring user credential entry and CAPTCHA, and are not claimed by these tests.

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0-alpha.1 · development · 2026-09-29
+
+- Corrected the requirement: saved website credentials used automatically, beyond manual login handoff.
+- Added encrypted accounts, per-agent/origin/account grants with expiry and use limits, cancellation, GUI and web-login CLI.
+- Added optional controlled CloudCone Chromium worker with direct credential filling, human CAPTCHA/MFA gate and fixed inventory-field extraction.
+- Added fake-browser and Go race coverage; real-account/live-layout verification remains pending.
+
 ## 0.3.0-alpha.1 · 2026-09-29
 
 - Added browser login handoff inbox, operator-managed website allowlist and CLI.

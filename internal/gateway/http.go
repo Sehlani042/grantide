@@ -294,6 +294,7 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler)
 		}
 		jsonResponse(w, 200, out)
 	}))
+	e.loginRoutes(mux, admin, agent)
 	mux.Handle("GET /", assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

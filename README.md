@@ -99,3 +99,7 @@ Agents can use `grantide credential` to request a credential through the GUI. Op
 ## Browser login handoff
 
 For website login, agents can use `grantide browser-login` to pause for human password/QR/MFA entry on the original browser tab. The GUI tracks the owning conversation and distinguishes human completion from agent verification. This cooperative protocol does not lock independent browser tools or approve purchases. [Integration and boundaries](docs/BROWSER-HANDOFF.md).
+
+## Automatic website login (v0.4 development)
+
+Save a website account in the local GUI, issue a scoped grant, and invoke `grantide web-login --grant REF`. An optional controlled Chromium worker fills credentials and handles the ordinary login flow; CAPTCHA/MFA remains human-assisted. Only CloudCone is currently adapted, with real-account verification pending. This does not export a browser session to general agent tools. See [setup, CLI and security boundaries](docs/CONTROLLED-LOGIN.md).

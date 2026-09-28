@@ -2,7 +2,7 @@ package gateway
 
 import "time"
 
-const Version = "0.3.0-alpha.1"
+const Version = "0.4.0-alpha.1"
 const MaxBody = 64 << 10
 const PendingTTL = 5 * time.Minute
 
@@ -95,6 +95,7 @@ type Event struct {
 }
 
 type State struct {
+	WebAccounts  []WebAccount  `json:"web_accounts"`
 	BrowserSites []BrowserSite `json:"browser_sites"`
 	Schema       int           `json:"schema"`
 	Revision     int           `json:"revision"`
@@ -119,6 +120,10 @@ type CredentialRequest struct {
 }
 
 type Snapshot struct {
+	WebAccounts        []WebAccount        `json:"web_accounts"`
+	LoginGrants        []LoginGrant        `json:"login_grants"`
+	LoginRuns          []LoginRun          `json:"login_runs"`
+	LoginWorkerReady   bool                `json:"login_worker_ready"`
 	BrowserSites       []BrowserSite       `json:"browser_sites"`
 	BrowserHandoffs    []BrowserHandoff    `json:"browser_handoffs"`
 	CredentialRequests []CredentialRequest `json:"credential_requests"`

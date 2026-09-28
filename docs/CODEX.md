@@ -26,3 +26,7 @@ Suggested agent instruction: “When a configured service requires a credential,
 The service credential is shared by all policy-authorized callers of that service, is encrypted on disk, and remains until replaced or cleared in Connections. The five-minute limit applies to filling the request, not storage duration. Operation leases separately control time and use counts. The status API never returns the password; this does not isolate secrets from an unrestricted same-OS-user agent.
 
 For ordinary website passwords, QR and MFA, use the [browser login handoff](BROWSER-HANDOFF.md). The human completes entry on the original website; the originating agent verifies the original browser tab afterward. Grantide does not automatically intercept browser tools or wake other conversations. SSH/sudo password entry remains unsupported.
+
+## Automatic saved-credential login (v0.4)
+
+Use `grantide web-login`, not `browser-login`, when the operator wants saved credentials to be filled automatically. See [CONTROLLED-LOGIN.md](CONTROLLED-LOGIN.md). The operator saves an account and creates a scoped grant in **Automatic login**; the agent lists only its own grants and submits the nonsecret reference. MFA/CAPTCHA still requires the human. This uses a separate worker-owned browser and returns only status plus explicitly authorized structured fields. It does not log Safari/IAB into the account or grant general browser access.

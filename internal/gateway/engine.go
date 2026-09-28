@@ -13,6 +13,12 @@ import (
 )
 
 type Engine struct {
+	loginRunner LoginRunner
+	loginGrants map[string]*LoginGrant
+	loginRuns   map[string]*LoginRun
+	loginBusy   bool
+	loginClosed bool
+	loginWG     sync.WaitGroup
 	mu          sync.Mutex
 	store       *Store
 	state       State
@@ -33,6 +39,8 @@ func NewEngine(store *Store, demo bool) (*Engine, error) {
 		return nil, err
 	}
 	e := &Engine{store: store, state: state, requests: map[string]*Request{}, leases: map[string]*Lease{}, credentials: map[string]*CredentialRequest{}, handoffs: map[string]*BrowserHandoff{}, demo: demo, now: time.Now}
+	e.loginGrants = map[string]*LoginGrant{}
+	e.loginRuns = map[string]*LoginRun{}
 	e.executor = executeHTTP
 	if demo && len(state.Services) == 0 && len(state.Agents) == 0 && len(state.Rules) == 0 {
 		e.state.Agents = []Agent{{ID: "demo-agent", Name: "Sandbox agent", Enabled: true}}
@@ -115,6 +123,9 @@ func (e *Engine) mutate(action, target string, fn func() error) error {
 }
 
 func (e *Engine) invalidatePending() {
+	for _, g := range e.loginGrants {
+		e.revokeLoginLocked(g)
+	}
 	for _, r := range e.handoffs {
 		if handoffActive(r.Status) {
 			r.Status = "invalidated"
@@ -239,6 +250,12 @@ func (e *Engine) DeleteRule(id string) error {
 
 func (e *Engine) expire() {
 	now := e.now()
+	for _, r := range e.loginRuns {
+		if loginActive(r.Status) && !now.Before(r.ExpiresAt) {
+			r.Status = "expired"
+			r.cancel()
+		}
+	}
 	for _, r := range e.handoffs {
 		if handoffActive(r.Status) && !now.Before(r.ExpiresAt) {
 			r.Status = "expired"
@@ -533,6 +550,7 @@ func (e *Engine) Snapshot() Snapshot {
 	}
 	sort.Slice(s.Requests, func(i, j int) bool { return s.Requests[i].CreatedAt.After(s.Requests[j].CreatedAt) })
 	sort.Slice(s.Leases, func(i, j int) bool { return s.Leases[i].CreatedAt.After(s.Leases[j].CreatedAt) })
+	e.loginSnapshot(&s)
 	return s
 }
 
