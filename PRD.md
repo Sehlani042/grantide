@@ -24,3 +24,8 @@ Auto calls reach upstream once. Approval calls reach it only after approval, wit
 
 ## Decisions / DoR
 Go standard library plus native browser modules; no cloud dependency. Encrypted private local state; loopback binding. MIT license, experimental alpha. Project name changed from Agent Permit to Grantide at the user's request for a product name. Goal, scope, flow, constraints, risks and acceptance are defined; no blocking unanswered requirement.
+
+## Credential handoff (2026-09-28)
+Agents can request credential entry for a configured service and a policy-covered method/path. The operator sees the trusted origin and requesting agent, supplies a header token or HTTP Basic username/password in the local GUI, or rejects the request. Five-minute requests expire, cancel, and invalidate on configuration changes. Agent APIs return metadata/status only; entering credentials does not authorize execution. Saved service credentials apply to all authorized callers of that service. Generic browser form login, cookies and MFA are outside this increment.
+
+Acceptance: separate operator authentication for entry; cross-agent status isolation; no plaintext in snapshots/audit/agent responses; no dispatch on entry; encrypted persistence; exact operation still follows policy; invalidation, expiry and failed saves fail closed.

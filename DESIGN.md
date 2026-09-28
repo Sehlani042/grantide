@@ -12,3 +12,8 @@ AES-256-GCM encrypts persistent configuration and a bounded metadata audit using
 The GUI uses a separate bearer token, same-origin calls, no third-party assets and text-only rendering of untrusted values. Strict CSP and Origin/Host checks protect the local surface. Inputs reject unknown fields and enforce size limits. Demo requests use a fixed demo agent and a fake executor.
 
 Go 1.25+. Primary references checked 2026-09-27: https://pkg.go.dev/net/http#Client, https://pkg.go.dev/crypto/cipher#NewGCM, https://pkg.go.dev/net/netip.
+
+## Credential handoff
+A separate bounded in-memory queue holds at most 128 credential requests and eight pending requests per agent. Requests are deduplicated by actor/service/method/path and expire after five minutes or policy expiry, whichever is sooner. Only a configured authenticated service covered by a non-deny rule may be requested. No agent-controlled URL, auth type or secret-entry field is accepted. Status reads/cancellation are actor scoped.
+
+Operator entry uses a separate admin endpoint. Credential persistence, audit and revision advance occur under the engine mutex; failure rolls back state. Saving invalidates pending operations, credential requests and leases, marks the resolved request fulfilled, and never dispatches. The credential is service-wide, not limited to the requesting actor or one operation; subsequent calls are independently authorized. HTTP Basic uses the stored username/password via SetBasicAuth. Both plaintext password and exact Basic encoding are redacted from response bodies; arbitrary upstream transformations remain outside this filter's guarantees. Credential request state is lost on restart.

@@ -17,8 +17,8 @@ const modes = {
   lease: {icon:'◷', zh:'限时授权', en:'Temporary access', desc:['批准一段时间，也限定调用次数。','Grant a time window with a call limit.']},
   deny: {icon:'⊘', zh:'明确禁止', en:'Always deny', desc:['命中即拒绝，其他规则不能覆盖。','An explicit boundary that other rules cannot override.']}
 };
-const pages = {overview:['总览','Overview','◈'],rules:['权限规则','Policies','≋'],approvals:['待审批','Approvals','◇'],leases:['临时授权','Active grants','◷'],connections:['连接管理','Connections','⌘'],audit:['操作记录','Activity','☷'],playground:['试验场','Playground','▷']};
-const statusName = (s) => ({pending:t('待你审批','Awaiting review'),executing:t('执行中','Executing'),completed:t('已完成','Completed'),denied:t('已阻止','Blocked'),rejected:t('已拒绝','Rejected'),failed:t('执行失败','Failed'),expired:t('已过期','Expired'),invalidated:t('授权已失效','Invalidated'),cancelled:t('已取消','Cancelled')}[s] || s);
+const pages = {overview:['总览','Overview','◈'],rules:['权限规则','Policies','≋'],approvals:['待审批','Approvals','◇'],credentials:['凭证申请','Credentials','⌑'],leases:['临时授权','Active grants','◷'],connections:['连接管理','Connections','⌘'],audit:['操作记录','Activity','☷'],playground:['试验场','Playground','▷']};
+const statusName = (s) => ({fulfilled:t('已填写','Credential saved'),pending:t('待你审批','Awaiting review'),executing:t('执行中','Executing'),completed:t('已完成','Completed'),denied:t('已阻止','Blocked'),rejected:t('已拒绝','Rejected'),failed:t('执行失败','Failed'),expired:t('已过期','Expired'),invalidated:t('授权已失效','Invalidated'),cancelled:t('已取消','Cancelled')}[s] || s);
 const badge = (mode) => `<span class="badge ${esc(mode)}"><span>${modes[mode]?.icon || '·'}</span>${esc(modes[mode] ? t(modes[mode].zh,modes[mode].en) : mode)}</span>`;
 const statusBadge = (s) => `<span class="status-badge ${esc(s)}">${esc(statusName(s))}</span>`;
 const agentName = (id) => id === '*' ? t('所有 Agent','All agents') : state.agents.find(a=>a.id===id)?.name || id;
@@ -60,12 +60,12 @@ async function refresh(force=false) {
 function render() {
   document.documentElement.lang=lang==='zh'?'zh-CN':'en';
   const pending=state.requests.filter(r=>r.status==='pending');
-  $('#nav').innerHTML=Object.entries(pages).filter(([key])=>key!=='playground'||state.demo).map(([key,v])=>`<button class="nav-item ${page===key?'active':''}" data-action="navigate" data-id="${key}"><span class="nav-icon">${v[2]}</span><span>${t(v[0],v[1])}</span>${key==='approvals'&&pending.length?`<span class="count">${pending.length}</span>`:''}</button>`).join('');
+  $('#nav').innerHTML=Object.entries(pages).filter(([key])=>key!=='playground'||state.demo).map(([key,v])=>`<button class="nav-item ${page===key?'active':''}" data-action="navigate" data-id="${key}"><span class="nav-icon">${v[2]}</span><span>${t(v[0],v[1])}</span>${key==='credentials'&&state.credential_requests?.some(r=>r.status==='pending')?`<span class="count">${state.credential_requests.filter(r=>r.status==='pending').length}</span>`:''}${key==='approvals'&&pending.length?`<span class="count">${pending.length}</span>`:''}</button>`).join('');
   $('#crumb').textContent=t(pages[page][0],pages[page][1]);$('#language').textContent=lang==='zh'?'EN':'中文';
   $('#workspace-label').textContent=t('本机工作区','Local workspace');$('#boundary-title').textContent=t('默认拒绝，明确授权。','Closed until you open it.');$('#boundary-copy').textContent=t('只有匹配规则的请求，才能通过这道边界。','Only requests covered by your policies can cross this boundary.');
   $('#connection').innerHTML=`<span class="status-dot"></span>${online?t('网关在线','Gateway online'):t('连接中断','Disconnected')}`;
   $('#demo-banner').innerHTML=state.demo?`<div class="demo-banner"><span class="badge demo">SANDBOX</span><span>${t('演示环境 · 所有示例只访问模拟 API，不连接真实账号。','Sandbox · Example calls use a simulated API. No real accounts connected.')}</span><button data-action="navigate" data-id="playground">${t('开始体验','Try it out')} →</button></div>`:'';
-  const views={overview:overviewView,rules:rulesView,approvals:approvalsView,leases:leasesView,connections:connectionsView,audit:auditView,playground:playgroundView};
+  const views={overview:overviewView,rules:rulesView,approvals:approvalsView,credentials:credentialsView,leases:leasesView,connections:connectionsView,audit:auditView,playground:playgroundView};
   $('#main').innerHTML=views[page]();$('#footer').textContent=t('允界 Grantide · 本机运行 · 规则版本 ','Grantide · Runs locally · Policy revision ')+state.revision;
 }
 function overviewView() {
@@ -99,6 +99,20 @@ function pretty(value) {try{return JSON.stringify(JSON.parse(value),null,2);}cat
 function leasesView() {
   return heading('TIME-BOUND ACCESS',t('授权有期限，随时可收回。','A little access. For a little while.'),t('剩余次数包括可继续执行的新请求。撤销阻止后续调用，已发出的操作无法撤回。','Remaining calls are available for new requests. Revocation stops future dispatches; it cannot undo calls already sent.'))+
   (state.leases.length?`<div class="lease-grid">${state.leases.map(l=>`<article class="panel lease-card ${activeLease(l)?'':'inactive'}"><div class="section-title">${badge('lease')}<span class="micro">${l.revoked?t('已撤销','REVOKED'):activeLease(l)?t('生效中','ACTIVE'):t('已结束','ENDED')}</span></div><h2>${esc(state.rules.find(r=>r.id===l.rule_id)?.name||l.rule_id)}</h2><p>${esc(agentName(l.agent_id))} → ${esc(serviceName(l.service_id))}</p><code class="lease-scope">${esc(l.methods.join(', '))} ${esc(l.path_prefix)}</code><div class="lease-metrics"><div><strong ${activeLease(l)?`data-until="${esc(l.expires_at)}"`:''}>${activeLease(l)?remaining(l.expires_at):'—'}</strong><span>${t('剩余时间','Time left')}</span></div><div><strong>${l.remaining}<small> / ${l.total}</small></strong><span>${t('剩余次数','Calls remaining')}</span></div></div><div class="lease-footer"><small>${t('到期','Expires')} ${date(l.expires_at)}</small>${activeLease(l)?button(t('立即撤销','Revoke now'),'revoke',l.id,'danger-quiet'):''}</div></article>`).join('')}</div>`:`<section class="panel">${empty(t('没有临时授权','No temporary grants'),t('批准一个限时请求后，可以在这里查看倒计时、剩余次数和撤销入口。','After granting temporary access, track its expiry and call limit here.'),state.demo?button(t('试试限时授权','Try temporary access'),'demo','lease'): '')}</section>`);
+}
+function credentialsView() {
+  const items=state.credential_requests||[];
+  return heading('HUMAN CREDENTIAL HANDOFF',t('密码在这里填写。','Enter credentials here.'),t('核对目标服务和申请的 Agent，再填写。凭证由网关加密保存；填写不等于批准操作。','Check the destination and requesting agent before entering a credential. Saving does not approve an operation.'))+
+    (items.length?items.map(r=>`<article class="approval-card"><div class="approval-header"><div>${statusBadge(r.status)}<h2>${esc(serviceName(r.service_id))}</h2><p>${esc(agentName(r.agent_id))} · ${esc(r.auth_type==='basic'?'HTTP Basic':'Header credential')}</p></div>${r.status==='pending'?`<div class="deadline">${t('填写剩余','Entry window')}<strong data-until="${esc(r.expires_at)}">${remaining(r.expires_at)}</strong></div>`:''}</div><div class="payload"><div class="payload-url"><span class="method">${esc(r.method)}</span><code>${esc(r.origin)}${esc(r.path)}</code></div></div><p class="muted">${t('保存后，该服务的所有获准调用都将使用更新后的凭证。','The updated credential will be used by all authorized calls to this service.')}</p>${r.status==='pending'?`<div class="approval-actions">${button(t('拒绝','Reject'),'reject-credential',r.id,'danger-quiet')}${button(t('填写凭证','Enter credential'),'fill-credential',r.id,'primary')}</div>`:''}</article>`).join(''):`<section class="panel">${empty(t('没有待填写的凭证','No credentials requested'),t('Codex 发起申请后，你可以在这里填写。普通网站的表单登录尚未接入。','Requests from your agent appear here. Browser form logins are not supported yet.'))}</section>`);
+}
+function credentialForm(id) {
+  const r=state.credential_requests.find(x=>x.id===id);if(!r||r.status!=='pending')return;
+  openModal(t('填写服务凭证','Enter service credential'),t('只提交给本机网关；Agent 接口只返回状态。','Submitted to the local gateway; agent endpoints return status only.'),`<div class="payload"><strong>${esc(serviceName(r.service_id))}</strong><p><code>${esc(r.origin)}</code></p><p>${esc(agentName(r.agent_id))} · ${esc(r.method)} ${esc(r.path)}</p></div><p class="muted">${t('保存会更新这个服务的共享凭证，并使已有授权失效。后续调用继续遵守权限规则。','Saving updates this service’s shared credential and invalidates previous grants. Subsequent calls still follow policies.')}</p>${r.auth_type==='basic'?field(t('账号','Username'),'username','','required maxlength="256" autocomplete="username"'):''}${field(r.auth_type==='basic'?t('密码','Password'):t('API Key / Token','API key / token'),'secret','','type="password" required maxlength="8192" autocomplete="off"')}<small>${t('仅支持 API 凭证和 HTTP Basic；请勿在这里填写普通网站登录密码。','Supports API credentials and HTTP Basic. Do not enter a browser website login password here.')}</small>`,'credential-form');
+  $('#credential-form').addEventListener('submit',async ev=>{
+    ev.preventDefault();const form=ev.target,submit=form.querySelector('[type=submit]');submit.disabled=true;
+    try {const d=new FormData(form);await api(`/admin/credential-requests/${r.id}/decision`,'POST',{decision:'save',username:d.get('username')||'',secret:d.get('secret')});form.reset();modal.close();await refresh(true);notify(t('凭证已保存，Agent 可继续申请操作。','Credential saved. The agent may now request its operation.'));}
+    catch(e){$('#form-error').textContent=e.message;}finally{submit.disabled=false;}
+  });
 }
 function connectionsView() {
   return heading('CONNECTIONS',t('连接 Agent 与它需要的服务。','Connect agents to their services.'),t('Agent 只持有自己的访问凭证。上游密钥保存在网关里，执行获准请求时才注入。','Agents hold their own access token. The gateway injects upstream credentials only into authorized calls.'))+
@@ -136,8 +150,9 @@ function ruleForm(id,initialMode='auto') {
 function localDatetime(v) {const d=new Date(v);return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,16);}
 function serviceForm(id) {
   const s=state.services.find(x=>x.id===id)||{id:'',name:'',origin:'',enabled:true,auth_header:'Authorization',auth_prefix:'Bearer ',allow_private:false};
-  openModal(id?t('编辑服务','Edit service'):t('添加服务','Add service'),t('只能向这里配置的 origin 发出请求。密钥不会返回给 Agent。','Requests can target only configured origins. Credentials are not returned by the management API.'),`${s.id?`<p class="service-id">Service ID: <code>${esc(s.id)}</code></p>`:''}${field(t('服务名称','Service name'),'name',s.name,'required maxlength="100"')}${field('Origin','origin',s.origin,'required placeholder="https://api.example.com"')}<div class="form-grid">${field(t('认证 Header','Auth header'),'auth_header',s.auth_header||'','placeholder="Authorization"')}${field(t('认证前缀','Auth prefix'),'auth_prefix',s.auth_prefix||'','placeholder="Bearer "')}</div><label>${t('上游密钥','Upstream credential')}<input type="password" name="secret" autocomplete="new-password" placeholder="${s.secret_set?t('留空保留已保存密钥','Leave blank to keep saved credential'):t('可选','Optional')}"></label>${s.secret_set?`<label class="check-label"><input type="checkbox" name="clear_secret">${t('清除已保存密钥','Clear saved credential')}</label>`:''}<label class="check-label"><input type="checkbox" name="allow_private" ${s.allow_private?'checked':''}>${t('允许内网地址及 HTTP（仅信任的内部服务）','Allow private destinations and HTTP (trusted internal services only)')}</label>${enabledField(s.enabled)}`,'service-form');
-  $('#service-form').addEventListener('submit',ev=>saveForm(ev,async d=>{await api('/admin/services','POST',{service:{id:s.id,name:d.get('name'),origin:d.get('origin'),auth_header:d.get('auth_header'),auth_prefix:d.get('auth_prefix'),secret:d.get('secret'),allow_private:d.has('allow_private'),enabled:d.has('enabled')},clear_secret:d.has('clear_secret')});}));
+  openModal(id?t('编辑服务','Edit service'):t('添加服务','Add service'),t('只能向这里配置的 origin 发出请求。密钥不会返回给 Agent。','Requests can target only configured origins. Credentials are not returned by the management API.'),`${s.id?`<p class="service-id">Service ID: <code>${esc(s.id)}</code></p>`:''}${field(t('服务名称','Service name'),'name',s.name,'required maxlength="100"')}${field('Origin','origin',s.origin,'required placeholder="https://api.example.com"')}${select(t('认证方式','Authentication'),'auth_type',[['header','API Key / Header'],['basic','HTTP Basic']],s.auth_type||'header')}${field(t('HTTP Basic 账号','HTTP Basic username'),'username',s.username||'','maxlength="256" autocomplete="username"')}<div class="form-grid">${field(t('认证 Header','Auth header'),'auth_header',s.auth_header||'','placeholder="Authorization"')}${field(t('认证前缀','Auth prefix'),'auth_prefix',s.auth_prefix||'','placeholder="Bearer "')}</div><label>${t('上游密钥','Upstream credential')}<input type="password" name="secret" autocomplete="new-password" placeholder="${s.secret_set?t('留空保留已保存密钥','Leave blank to keep saved credential'):t('可选','Optional')}"></label>${s.secret_set?`<label class="check-label"><input type="checkbox" name="clear_secret">${t('清除已保存密钥','Clear saved credential')}</label>`:''}<label class="check-label"><input type="checkbox" name="allow_private" ${s.allow_private?'checked':''}>${t('允许内网地址及 HTTP（仅信任的内部服务）','Allow private destinations and HTTP (trusted internal services only)')}</label>${enabledField(s.enabled)}`,'service-form');
+  const sf=$('#service-form');const syncAuth=()=>{const basic=sf.elements.auth_type.value==='basic';sf.elements.username.parentElement.hidden=!basic;sf.elements.auth_header.parentElement.parentElement.hidden=basic;};syncAuth();sf.elements.auth_type.addEventListener('change',syncAuth);
+  $('#service-form').addEventListener('submit',ev=>saveForm(ev,async d=>{await api('/admin/services','POST',{service:{id:s.id,name:d.get('name'),origin:d.get('origin'),auth_type:d.get('auth_type'),username:d.get('username'),auth_header:d.get('auth_type')==='basic'?'Authorization':d.get('auth_header'),auth_prefix:d.get('auth_type')==='basic'?'':d.get('auth_prefix'),secret:d.get('secret'),allow_private:d.has('allow_private'),enabled:d.has('enabled')},clear_secret:d.has('clear_secret')});}));
 }
 function agentForm() {
   openModal(t('添加 Agent','Add agent'),t('为每个 Agent 单独创建身份，方便授权和撤销。','Create a separate identity for each agent.'),field(t('名称','Name'),'name','','required maxlength="100" placeholder="My coding agent"'),'agent-form');
@@ -154,12 +169,14 @@ document.addEventListener('click',async ev=>{
   if(action==='new-rule'){ruleForm('',modes[id]?id:'auto');return;}
   if(action==='edit-rule'){ruleForm(id);return;}
   if(action==='new-service'||action==='edit-service'){serviceForm(id);return;}
+  if(action==='fill-credential'){credentialForm(id);return;}
   if(action==='new-agent'){agentForm();return;}
   if(action==='view-request'){viewRequest(id);return;}
   if(busy)return;busy=true;el.disabled=true;
   try {
     if(action==='demo'){lastDemo=await api('/admin/demo','POST',{mode:id});notify(lastDemo.status==='pending'?t('请求已进入审批队列。','Request is waiting for review.'):statusName(lastDemo.status));if(lastDemo.status==='pending')page='approvals';else page='playground';}
     if(['approve','grant','reject'].includes(action)){await api(`/admin/requests/${id}/decision`,'POST',{decision:{approve:'once',grant:'lease',reject:'reject'}[action]});notify(action==='reject'?t('已拒绝请求。','Request rejected.'):t('已批准并执行。','Approved and dispatched.'));}
+    if(action==='reject-credential'){await api(`/admin/credential-requests/${id}/decision`,'POST',{decision:'reject'});notify(t('已拒绝凭证申请。','Credential request rejected.'));}
     if(action==='revoke'){await api(`/admin/leases/${id}/revoke`,'POST',{});notify(t('临时授权已撤销。','Grant revoked.'));}
     if(action==='toggle-agent'){const a=state.agents.find(x=>x.id===id);await api(`/admin/agents/${id}`,'PUT',{name:a.name,enabled:!a.enabled});notify(t('身份已更新，旧授权已失效。','Identity updated. Previous authorizations invalidated.'));}
     await refresh(true);
@@ -167,6 +184,7 @@ document.addEventListener('click',async ev=>{
 });
 $('#language').addEventListener('click',()=>{lang=lang==='zh'?'en':'zh';localStorage.setItem('grantide-language',lang);if(state)render();});
 $('#logout').addEventListener('click',()=>{sessionStorage.removeItem('grantide-operator');token='';state=null;modal.close();showLogin();});
+modal.addEventListener('close',()=>{$('#modal-content').replaceChildren();});
 modal.addEventListener('click',ev=>{if(ev.target===modal)modal.close();});
 window.addEventListener('hashchange',()=>{if(useLoginFragment())refresh(true).catch(e=>showLogin(e.message));});
 if(token)refresh(true).catch(e=>showLogin(e.message));else showLogin();

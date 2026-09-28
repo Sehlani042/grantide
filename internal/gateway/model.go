@@ -2,7 +2,7 @@ package gateway
 
 import "time"
 
-const Version = "0.1.0-alpha.1"
+const Version = "0.2.0-alpha.1"
 const MaxBody = 64 << 10
 const PendingTTL = 5 * time.Minute
 
@@ -19,6 +19,8 @@ type Service struct {
 	Origin       string `json:"origin"`
 	Enabled      bool   `json:"enabled"`
 	AllowPrivate bool   `json:"allow_private"`
+	AuthType     string `json:"auth_type,omitempty"`
+	Username     string `json:"username,omitempty"`
 	AuthHeader   string `json:"auth_header,omitempty"`
 	AuthPrefix   string `json:"auth_prefix,omitempty"`
 	Secret       string `json:"secret,omitempty"`
@@ -101,15 +103,30 @@ type State struct {
 	Audit    []Event   `json:"audit"`
 }
 
+type CredentialRequest struct {
+	ID        string    `json:"id"`
+	AgentID   string    `json:"agent_id"`
+	ServiceID string    `json:"service_id"`
+	Method    string    `json:"method"`
+	Path      string    `json:"path"`
+	Origin    string    `json:"origin"`
+	AuthType  string    `json:"auth_type"`
+	Revision  int       `json:"revision"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
 type Snapshot struct {
-	Version    string    `json:"version"`
-	Revision   int       `json:"revision"`
-	Demo       bool      `json:"demo"`
-	ServerTime time.Time `json:"server_time"`
-	Agents     []Agent   `json:"agents"`
-	Services   []Service `json:"services"`
-	Rules      []Rule    `json:"rules"`
-	Requests   []Request `json:"requests"`
-	Leases     []Lease   `json:"leases"`
-	Audit      []Event   `json:"audit"`
+	CredentialRequests []CredentialRequest `json:"credential_requests"`
+	Version            string              `json:"version"`
+	Revision           int                 `json:"revision"`
+	Demo               bool                `json:"demo"`
+	ServerTime         time.Time           `json:"server_time"`
+	Agents             []Agent             `json:"agents"`
+	Services           []Service           `json:"services"`
+	Rules              []Rule              `json:"rules"`
+	Requests           []Request           `json:"requests"`
+	Leases             []Lease             `json:"leases"`
+	Audit              []Event             `json:"audit"`
 }

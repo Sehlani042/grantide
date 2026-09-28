@@ -177,6 +177,54 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler)
 		}
 		jsonResponse(w, 200, map[string]bool{"ok": true})
 	}))
+	mux.HandleFunc("POST /v1/credential-requests", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		var in Call
+		if !decode(w, r, &in) {
+			return
+		}
+		out, err := e.RequestCredential(actor, in)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		jsonResponse(w, 202, out)
+	}))
+	mux.HandleFunc("GET /v1/credential-requests/{id}", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		out, ok := e.GetCredentialRequest(actor, r.PathValue("id"))
+		if !ok {
+			fail(w, 404, "Credential request not found")
+			return
+		}
+		jsonResponse(w, 200, out)
+	}))
+	mux.HandleFunc("POST /v1/credential-requests/{id}/cancel", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		if err := e.CancelCredential(actor, r.PathValue("id")); err != nil {
+			fail(w, 404, err.Error())
+			return
+		}
+		jsonResponse(w, 200, map[string]bool{"ok": true})
+	}))
+	mux.HandleFunc("POST /admin/credential-requests/{id}/decision", admin(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Decision string `json:"decision"`
+			Username string `json:"username"`
+			Secret   string `json:"secret"`
+		}
+		// Never echo decoder errors: unknown field names may contain pasted secrets.
+		r.Body = http.MaxBytesReader(w, r.Body, 16<<10)
+		d := json.NewDecoder(r.Body)
+		d.DisallowUnknownFields()
+		if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF {
+			fail(w, 400, "Invalid credential input")
+			return
+		}
+		out, err := e.ResolveCredential(r.PathValue("id"), in.Decision, in.Username, in.Secret)
+		if err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		jsonResponse(w, 200, out)
+	}))
 	mux.Handle("GET /", assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

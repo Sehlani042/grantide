@@ -67,3 +67,7 @@ node --check internal/webui/assets/app.js
 ```
 
 MIT 开源。Go 标准库实现后端，原生浏览器模块实现 GUI，没有第三方运行时依赖。
+
+## 在界面里填写凭证
+
+Codex 可通过 `grantide credential` 发起申请，你在“凭证申请”页面填写 API Key 或 HTTP Basic 账号密码，Agent 只得到状态。填写后仍按原有权限规则执行；目前不支持普通网站表单登录、SSH 或 sudo 密码。接入方式见 [Codex 使用说明](docs/CODEX.md)。

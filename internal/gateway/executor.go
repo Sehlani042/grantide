@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"io"
 	"net"
@@ -76,7 +77,11 @@ func executeHTTP(ctx context.Context, s Service, c Call) (*Result, error) {
 	}
 	req.Header.Set("User-Agent", "Grantide/"+Version)
 	if s.Secret != "" {
-		req.Header.Set(s.AuthHeader, s.AuthPrefix+s.Secret)
+		if s.AuthType == "basic" {
+			req.SetBasicAuth(s.Username, s.Secret)
+		} else {
+			req.Header.Set(s.AuthHeader, s.AuthPrefix+s.Secret)
+		}
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -96,6 +101,9 @@ func executeHTTP(ctx context.Context, s Service, c Call) (*Result, error) {
 	}
 	text := string(body)
 	if s.Secret != "" {
+		if s.AuthType == "basic" {
+			text = strings.ReplaceAll(text, base64.StdEncoding.EncodeToString([]byte(s.Username+":"+s.Secret)), "[REDACTED]")
+		}
 		text = strings.ReplaceAll(text, s.Secret, "[REDACTED]")
 	}
 	return &Result{Status: resp.StatusCode, Body: text, Truncated: truncated}, nil

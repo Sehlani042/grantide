@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0-alpha.1 · 2026-09-28
+
+- Added actor-scoped credential requests, local GUI entry/rejection, expiry/cancellation and CLI polling.
+- Added HTTP Basic username/password injection and redaction alongside header credentials.
+- Saving credentials never dispatches, invalidates existing requests/grants and keeps policy enforcement intact.
+- Added authorization, replay, encryption, rollback and fake Basic upstream coverage; documented Codex CLI integration and browser-login limits.
+
 ## 0.1.0-alpha.1 · 2026-09-27
 - Independent Grantide / 允界 project at user's request.
 - Four permission modes and a browser operator console.

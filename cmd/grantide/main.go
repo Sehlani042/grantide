@@ -31,7 +31,7 @@ func main() {
 }
 func run() error {
 	if len(os.Args) < 2 {
-		fmt.Println("Grantide · 允界\n\n  grantide serve [--demo] [--data-dir PATH] [--port PORT]\n  grantide call --service ID --method GET --path /metrics [--body JSON]\n  grantide version\n\nAgent CLI reads GRANTIDE_URL and GRANTIDE_TOKEN from the environment.")
+		fmt.Println("Grantide · 允界\n\n  grantide serve [--demo] [--data-dir PATH] [--port PORT]\n  grantide call --service ID --method GET --path /metrics [--body JSON]\n  grantide credential --service ID --method GET --path /metrics [--wait 5m]\n  grantide credential --id REQUEST_ID\n  grantide version\n\nAgent CLI reads GRANTIDE_URL and GRANTIDE_TOKEN from the environment.")
 		return nil
 	}
 	switch os.Args[1] {
@@ -39,6 +39,8 @@ func run() error {
 		return serve(os.Args[2:])
 	case "call":
 		return call(os.Args[2:])
+	case "credential":
+		return credential(os.Args[2:])
 	case "version":
 		fmt.Println(gateway.Version)
 		return nil

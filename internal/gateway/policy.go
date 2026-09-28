@@ -89,6 +89,18 @@ func validateService(s Service, demo bool) error {
 	if !validID.MatchString(s.ID) || strings.TrimSpace(s.Name) == "" || len(s.Name) > 100 {
 		return errors.New("service needs a valid ID and name")
 	}
+	if s.AuthType != "" && s.AuthType != "header" && s.AuthType != "basic" {
+		return errors.New("unsupported authentication type")
+	}
+	if len(s.Username) > 256 || strings.ContainsAny(s.Username, ":\r\n") {
+		return errors.New("invalid Basic username")
+	}
+	if s.AuthType == "basic" && s.Secret != "" && s.Username == "" {
+		return errors.New("Basic username required when saving a password")
+	}
+	if s.AuthType == "basic" && (s.AuthHeader != "Authorization" || s.AuthPrefix != "") {
+		return errors.New("Basic authentication requires Authorization header and empty prefix")
+	}
 	if demo && s.Origin == "demo://sandbox" {
 		return nil
 	}

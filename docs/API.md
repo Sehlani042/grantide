@@ -1,4 +1,4 @@
-# HTTP API v0.1
+# HTTP API v0.2
 
 The server listens on `http://127.0.0.1:<port>`. Every endpoint except `/healthz` and static GUI assets requires `Authorization: Bearer <token>`. Operator and agent tokens are separate. JSON rejects unknown fields. No CORS access is enabled.
 
@@ -70,3 +70,15 @@ Rule example:
 ```
 
 `agent_id: "*"` matches all agents, but a resulting grant always belongs to the requesting agent. Optional `expires_at` is an RFC3339 timestamp. Expired matching rules deny; disabling a rule removes it from evaluation. Configuration mutations invalidate all pending approvals and leases, even when the changed item is unrelated. This conservative behavior is intentional in the alpha.
+
+## Credential entry requests
+Agent token endpoints:
+- `POST /v1/credential-requests` accepts `{service_id, method, path}` only (no body/query). Requires a matching non-deny policy and configured authentication. Returns HTTP 202 with `{id, agent_id, service_id, method, path, origin, auth_type, revision, status, created_at, expires_at}`.
+- `GET /v1/credential-requests/{id}` returns only that agent's request metadata.
+- `POST /v1/credential-requests/{id}/cancel` cancels a pending request.
+
+Operator endpoint: `POST /admin/credential-requests/{id}/decision` accepts `{decision: "save", username: "", secret: "..."}` or `{decision: "reject"}`. `username` is only used for Basic. Never submit credentials via the agent endpoints, chat, command arguments or logs. Responses contain metadata only. `GET /admin/state` includes `credential_requests`.
+
+Statuses: `pending`, `fulfilled`, `rejected`, `expired`, `invalidated`, `cancelled`. Requests expire after at most five minutes, deduplicate while pending, and disappear on restart. `fulfilled` means stored, not authenticated with the upstream and not authorized to execute. Saving changes the service-wide credential and invalidates prior grants/requests. Other agents with matching service policies also use the new credential.
+
+Service adds `auth_type: "header" | "basic"` (omission retains legacy header semantics), and `username`. Basic requires `auth_header: "Authorization"` and an empty `auth_prefix`; `secret` is the password. Browser HTML forms, cookies, MFA, SSH and sudo are not supported.

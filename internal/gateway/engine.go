@@ -13,14 +13,15 @@ import (
 )
 
 type Engine struct {
-	mu       sync.Mutex
-	store    *Store
-	state    State
-	requests map[string]*Request
-	leases   map[string]*Lease
-	demo     bool
-	now      func() time.Time
-	executor func(context.Context, Service, Call) (*Result, error)
+	mu          sync.Mutex
+	store       *Store
+	state       State
+	requests    map[string]*Request
+	leases      map[string]*Lease
+	credentials map[string]*CredentialRequest
+	demo        bool
+	now         func() time.Time
+	executor    func(context.Context, Service, Call) (*Result, error)
 }
 
 func clone[T any](v T) T { b, _ := json.Marshal(v); var out T; _ = json.Unmarshal(b, &out); return out }
@@ -30,7 +31,7 @@ func NewEngine(store *Store, demo bool) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	e := &Engine{store: store, state: state, requests: map[string]*Request{}, leases: map[string]*Lease{}, demo: demo, now: time.Now}
+	e := &Engine{store: store, state: state, requests: map[string]*Request{}, leases: map[string]*Lease{}, credentials: map[string]*CredentialRequest{}, demo: demo, now: time.Now}
 	e.executor = executeHTTP
 	if demo && len(state.Services) == 0 && len(state.Agents) == 0 && len(state.Rules) == 0 {
 		e.state.Agents = []Agent{{ID: "demo-agent", Name: "Sandbox agent", Enabled: true}}
@@ -108,6 +109,16 @@ func (e *Engine) mutate(action, target string, fn func() error) error {
 		e.state = before
 		return err
 	}
+	e.invalidatePending()
+	return nil
+}
+
+func (e *Engine) invalidatePending() {
+	for _, r := range e.credentials {
+		if r.Status == "pending" {
+			r.Status = "invalidated"
+		}
+	}
 	for _, r := range e.requests {
 		if r.Status == "pending" {
 			r.Status, r.Reason = "invalidated", "Configuration changed; submit a new request"
@@ -116,7 +127,6 @@ func (e *Engine) mutate(action, target string, fn func() error) error {
 	for _, l := range e.leases {
 		l.Revoked = true
 	}
-	return nil
 }
 
 func (e *Engine) PutAgent(id, name string, enabled bool) (Agent, string, error) {
@@ -223,6 +233,11 @@ func (e *Engine) DeleteRule(id string) error {
 
 func (e *Engine) expire() {
 	now := e.now()
+	for _, r := range e.credentials {
+		if r.Status == "pending" && !now.Before(r.ExpiresAt) {
+			r.Status = "expired"
+		}
+	}
 	for _, r := range e.requests {
 		if r.Status == "pending" && !now.Before(r.ExpiresAt) {
 			r.Status, r.Reason = "expired", "Approval window expired"
@@ -483,7 +498,7 @@ func (e *Engine) Snapshot() Snapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.expire()
-	s := Snapshot{Version: Version, Revision: e.state.Revision, Demo: e.demo, ServerTime: e.now().UTC(), Agents: clone(e.state.Agents), Services: clone(e.state.Services), Rules: clone(e.state.Rules), Audit: clone(e.state.Audit), Requests: []Request{}, Leases: []Lease{}}
+	s := Snapshot{Version: Version, Revision: e.state.Revision, Demo: e.demo, ServerTime: e.now().UTC(), Agents: clone(e.state.Agents), Services: clone(e.state.Services), Rules: clone(e.state.Rules), Audit: clone(e.state.Audit), Requests: []Request{}, Leases: []Lease{}, CredentialRequests: []CredentialRequest{}}
 	for i := range s.Agents {
 		s.Agents[i].TokenHash = ""
 	}
@@ -491,6 +506,10 @@ func (e *Engine) Snapshot() Snapshot {
 		s.Services[i].SecretSet = s.Services[i].Secret != ""
 		s.Services[i].Secret = ""
 	}
+	for _, r := range e.credentials {
+		s.CredentialRequests = append(s.CredentialRequests, *r)
+	}
+	sort.Slice(s.CredentialRequests, func(i, j int) bool { return s.CredentialRequests[i].CreatedAt.After(s.CredentialRequests[j].CreatedAt) })
 	for _, r := range e.requests {
 		s.Requests = append(s.Requests, clone(*r))
 	}
