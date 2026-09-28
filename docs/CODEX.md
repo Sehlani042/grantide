@@ -25,4 +25,4 @@ Suggested agent instruction: “When a configured service requires a credential,
 
 The service credential is shared by all policy-authorized callers of that service, is encrypted on disk, and remains until replaced or cleared in Connections. The five-minute limit applies to filling the request, not storage duration. Operation leases separately control time and use counts. The status API never returns the password; this does not isolate secrets from an unrestricted same-OS-user agent.
 
-Ordinary website form login, CAPTCHA/MFA, session cookies and SSH/sudo password entry need dedicated adapters and are not implemented by this HTTP gateway.
+For ordinary website passwords, QR and MFA, use the [browser login handoff](BROWSER-HANDOFF.md). The human completes entry on the original website; the originating agent verifies the original browser tab afterward. Grantide does not automatically intercept browser tools or wake other conversations. SSH/sudo password entry remains unsupported.

@@ -73,7 +73,7 @@ flowchart LR
 
 ## Scope of this alpha
 
-Grantide v0.2 is an **explicit JSON HTTP gateway**, not a transparent proxy or an OS sandbox. Agents must call its API/CLI. An agent with direct network access and its own provider credentials can bypass it. An agent running as the operator's OS user may read or modify the gateway's files. Use an isolated agent account/container with network controls when enforcement against an untrusted agent is required; this alpha does not install those controls for you.
+Grantide v0.3 is an **explicit JSON HTTP gateway**, not a transparent proxy or an OS sandbox. Agents must call its API/CLI. An agent with direct network access and its own provider credentials can bypass it. An agent running as the operator's OS user may read or modify the gateway's files. Use an isolated agent account/container with network controls when enforcement against an untrusted agent is required; this alpha does not install those controls for you.
 
 Policies match agent, service, method and path, not fields inside the body or query. For example, a GraphQL endpoint may contain both reads and writes at one path; use per-call approval until you have a narrower trusted adapter. Upstream responses are capped at 64 KiB. Bodies must be JSON; streaming, WebSocket, SSH, shell execution, MCP transport and hosted multi-user operation are not implemented.
 
@@ -94,4 +94,8 @@ See [PRD](PRD.md), [design](DESIGN.md), [test plan](TEST.md) and [release notes]
 
 ## Human credential entry
 
-Agents can use `grantide credential` to request a credential through the GUI. Operators enter an API key or HTTP Basic username/password locally; agents receive only request status. Saving does not approve execution. See [Codex setup and workflow](docs/CODEX.md). Browser website logins, SSH and sudo are not supported.
+Agents can use `grantide credential` to request a credential through the GUI. Operators enter an API key or HTTP Basic username/password locally; agents receive only request status. Saving does not approve execution. See [Codex setup and workflow](docs/CODEX.md). For website sign-in use the separate browser handoff below; SSH and sudo are not supported.
+
+## Browser login handoff
+
+For website login, agents can use `grantide browser-login` to pause for human password/QR/MFA entry on the original browser tab. The GUI tracks the owning conversation and distinguishes human completion from agent verification. This cooperative protocol does not lock independent browser tools or approve purchases. [Integration and boundaries](docs/BROWSER-HANDOFF.md).

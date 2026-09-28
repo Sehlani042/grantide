@@ -70,4 +70,8 @@ MIT 开源。Go 标准库实现后端，原生浏览器模块实现 GUI，没有
 
 ## 在界面里填写凭证
 
-Codex 可通过 `grantide credential` 发起申请，你在“凭证申请”页面填写 API Key 或 HTTP Basic 账号密码，Agent 只得到状态。填写后仍按原有权限规则执行；目前不支持普通网站表单登录、SSH 或 sudo 密码。接入方式见 [Codex 使用说明](docs/CODEX.md)。
+Codex 可通过 `grantide credential` 发起申请，你在“凭证申请”页面填写 API Key 或 HTTP Basic 账号密码，Agent 只得到状态。填写后仍按原有权限规则执行；普通网站请使用下方的浏览器登录交接；SSH 或 sudo 密码尚未接入。接入方式见 [Codex 使用说明](docs/CODEX.md)。
+
+## 浏览器网站登录
+
+`grantide browser-login` 把登录交接登记到界面，显示原对话、浏览器和标签。你在原网站输入密码、扫码或完成验证码，再在允界确认；原 Agent 核验同一标签后继续。此功能依靠接入方暂停读取，不能锁住独立浏览器工具，也不会自动向其他对话发消息。登录完成不代表批准购买。详见 [接入说明](docs/BROWSER-HANDOFF.md)。

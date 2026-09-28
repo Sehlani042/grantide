@@ -2,7 +2,7 @@ package gateway
 
 import "time"
 
-const Version = "0.2.0-alpha.1"
+const Version = "0.3.0-alpha.1"
 const MaxBody = 64 << 10
 const PendingTTL = 5 * time.Minute
 
@@ -95,12 +95,13 @@ type Event struct {
 }
 
 type State struct {
-	Schema   int       `json:"schema"`
-	Revision int       `json:"revision"`
-	Agents   []Agent   `json:"agents"`
-	Services []Service `json:"services"`
-	Rules    []Rule    `json:"rules"`
-	Audit    []Event   `json:"audit"`
+	BrowserSites []BrowserSite `json:"browser_sites"`
+	Schema       int           `json:"schema"`
+	Revision     int           `json:"revision"`
+	Agents       []Agent       `json:"agents"`
+	Services     []Service     `json:"services"`
+	Rules        []Rule        `json:"rules"`
+	Audit        []Event       `json:"audit"`
 }
 
 type CredentialRequest struct {
@@ -118,6 +119,8 @@ type CredentialRequest struct {
 }
 
 type Snapshot struct {
+	BrowserSites       []BrowserSite       `json:"browser_sites"`
+	BrowserHandoffs    []BrowserHandoff    `json:"browser_handoffs"`
 	CredentialRequests []CredentialRequest `json:"credential_requests"`
 	Version            string              `json:"version"`
 	Revision           int                 `json:"revision"`

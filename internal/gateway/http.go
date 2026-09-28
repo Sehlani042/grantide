@@ -225,6 +225,75 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler)
 		}
 		jsonResponse(w, 200, out)
 	}))
+	mux.HandleFunc("POST /admin/browser-sites", admin(func(w http.ResponseWriter, r *http.Request) {
+		var in BrowserSite
+		if !decode(w, r, &in) {
+			return
+		}
+		out, err := e.PutBrowserSite(in)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		jsonResponse(w, 200, out)
+	}))
+	mux.HandleFunc("POST /v1/browser-handoffs", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		var in BrowserTarget
+		if !decode(w, r, &in) {
+			return
+		}
+		out, err := e.RequestBrowserHandoff(actor, in)
+		if err != nil {
+			fail(w, 400, err.Error())
+			return
+		}
+		jsonResponse(w, 202, out)
+	}))
+	mux.HandleFunc("GET /v1/browser-handoffs/{id}", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		out, ok := e.GetBrowserHandoff(actor, r.PathValue("id"))
+		if !ok {
+			fail(w, 404, "Browser handoff not found")
+			return
+		}
+		jsonResponse(w, 200, out)
+	}))
+	mux.HandleFunc("POST /v1/browser-handoffs/{id}/cancel", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		if err := e.CancelBrowserHandoff(actor, r.PathValue("id")); err != nil {
+			fail(w, 404, err.Error())
+			return
+		}
+		jsonResponse(w, 200, map[string]bool{"ok": true})
+	}))
+	mux.HandleFunc("POST /v1/browser-handoffs/{id}/verify", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		var in struct {
+			Target        BrowserTarget `json:"target"`
+			Origin        string        `json:"origin"`
+			Authenticated bool          `json:"authenticated"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		out, err := e.VerifyBrowserHandoff(actor, r.PathValue("id"), in.Target, in.Origin, in.Authenticated)
+		if err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		jsonResponse(w, 200, out)
+	}))
+	mux.HandleFunc("POST /admin/browser-handoffs/{id}/decision", admin(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Decision string `json:"decision"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		out, err := e.BrowserDecision(r.PathValue("id"), in.Decision)
+		if err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		jsonResponse(w, 200, out)
+	}))
 	mux.Handle("GET /", assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
