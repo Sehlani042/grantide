@@ -4,9 +4,9 @@
 
 Verified this increment: race tests, vet, JS syntax and build; operator/agent separation, exact context/origin, duplicate/concurrency handling, failed-save behavior, lifecycle and no dispatch. In the local GUI, a clearly labeled fake handoff moved from waiting to verification_required, and the agent CLI observed that state. This is protocol/UI verification, not a real website sign-in.
 
-Real scenario: the user selected the existing Tencent Cloud registration conversation. Its last recorded state is expired login. A separate local agent identity and Tencent console destination are prepared. Cross-chat message authorization has been requested; do not mark Tencent login as verified until the owning conversation performs the handoff, the human finishes and that agent sees the authenticated original tab. No real password has been entered, read or saved by Grantide.
+Real scenario: the user corrected the target to the existing server-inventory conversation. A separate local agent identity and CloudCone console destination are prepared, and integration instructions were sent to that conversation. It owns the browser and will first check for an existing session, then request a human handoff if needed. Follow-on work is read-only provider verification and updating local asset records. Do not mark authentication as verified until the owning conversation observes it; no real password has been entered, read or saved by Grantide.
 
-Next: finish real original-tab integration after user authorization and login. Continue to distinguish local simulation, actual browser authentication and follow-on operations. Mobile soft keyboard and phone hardware have not been tested.
+Next: await the owning conversation’s original-tab handoff and human login if required. Continue to distinguish local simulation, actual browser authentication and follow-on operations. Mobile soft keyboard and phone hardware have not been tested.
 
 ## Previous evidence
 
