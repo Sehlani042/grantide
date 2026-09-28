@@ -6,7 +6,9 @@ Verified this increment: race tests, vet, JS syntax and build; operator/agent se
 
 Real scenario: the user corrected the target to the existing server-inventory conversation. A separate local agent identity and CloudCone console destination are prepared, and integration instructions were sent to that conversation. It owns the browser and will first check for an existing session, then request a human handoff if needed. Follow-on work is read-only provider verification and updating local asset records. Do not mark authentication as verified until the owning conversation observes it; no real password has been entered, read or saved by Grantide.
 
-Next: await the owning conversation’s original-tab handoff and human login if required. Continue to distinguish local simulation, actual browser authentication and follow-on operations. Mobile soft keyboard and phone hardware have not been tested.
+Integration result: the owning conversation received the instructions and found an existing CloudCone tab. Its refresh returned ERR_CONNECTION_CLOSED; a single requested retry was then blocked by the browser tool’s URL policy on the error page. An unauthenticated local HEAD request returned HTTP 200, which does not establish browser connectivity or authentication. No real handoff was created, and old account information was not treated as freshly verified.
+
+Next: the user manually reopens CloudCone in the owning conversation’s browser; that conversation then verifies an existing session or requests human login if required. Continue to distinguish local simulation, actual browser authentication and follow-on operations. Mobile soft keyboard and phone hardware have not been tested.
 
 ## Previous evidence
 
