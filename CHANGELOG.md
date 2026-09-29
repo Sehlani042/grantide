@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-30 · Login setup refinements
+
+- Suggest editable account labels and support agent-prepared setup links.
+- Add explicit no-expiry grants; persist grant budgets and revocation with encrypted state and revision-bound invalidation.
+
 ## 0.4.0-alpha.1 · development · 2026-09-29
 
 - Corrected the requirement: saved website credentials used automatically, beyond manual login handoff.

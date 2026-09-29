@@ -23,14 +23,15 @@ type WebAccount struct {
 	SecretSet bool   `json:"secret_set,omitempty"`
 }
 type LoginGrant struct {
-	ID        string    `json:"id"`
-	AccountID string    `json:"account_id"`
-	AgentID   string    `json:"agent_id"`
-	Origin    string    `json:"origin"`
-	ReadPath  string    `json:"read_path,omitempty"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Remaining int       `json:"remaining"`
-	Revoked   bool      `json:"revoked"`
+	ID        string     `json:"id"`
+	AccountID string     `json:"account_id"`
+	AgentID   string     `json:"agent_id"`
+	Origin    string     `json:"origin"`
+	ReadPath  string     `json:"read_path,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at"`
+	Revision  int        `json:"revision"`
+	Remaining int        `json:"remaining"`
+	Revoked   bool       `json:"revoked"`
 }
 type LoginRun struct {
 	ID            string            `json:"id"`
@@ -63,6 +64,10 @@ type LoginEvent struct {
 	Fields        map[string]string `json:"fields,omitempty"`
 }
 type LoginRunner func(context.Context, LoginInput, func(LoginEvent) error, <-chan struct{}) error
+
+func (g LoginGrant) expired(now time.Time) bool {
+	return g.ExpiresAt != nil && !now.Before(*g.ExpiresAt)
+}
 
 func loginActive(s string) bool { return s == "executing" || s == "human_required" }
 func publicAccount(a WebAccount) WebAccount {
@@ -132,24 +137,29 @@ func (e *Engine) CreateLoginGrant(account, actor, path string, seconds, uses int
 	if e.loginRunner == nil {
 		return LoginGrant{}, errors.New("controlled browser worker is not configured")
 	}
-	if a == nil || !a.Enabled || agent == nil || !agent.Enabled || seconds < 30 || seconds > 86400 || uses < 1 || uses > 20 || (path != "" && !instancePath.MatchString(path)) {
-		return LoginGrant{}, errors.New("select an enabled account and agent, 30–86400 seconds, 1–20 uses, and an optional exact instance overview path")
+	if a == nil || !a.Enabled || agent == nil || !agent.Enabled || (seconds != 0 && (seconds < 30 || seconds > 86400)) || uses < 1 || uses > 20 || (path != "" && !instancePath.MatchString(path)) {
+		return LoginGrant{}, errors.New("select an enabled account and agent, 0 (no expiry) or 30–86400 seconds, 1–20 uses, and an optional exact instance overview path")
 	}
-	if len(e.loginGrants) >= 128 {
-		for id, g := range e.loginGrants {
-			if g.Revoked || !e.now().Before(g.ExpiresAt) {
-				delete(e.loginGrants, id)
+	if len(e.state.LoginGrants) >= 128 {
+		for id, g := range e.state.LoginGrants {
+			if g.Revoked || g.expired(e.now()) {
+				delete(e.state.LoginGrants, id)
 			}
 		}
-		if len(e.loginGrants) >= 128 {
+		if len(e.state.LoginGrants) >= 128 {
 			return LoginGrant{}, errors.New("grant limit reached")
 		}
 	}
-	g := LoginGrant{ID: newID("login_grant"), AccountID: a.ID, AgentID: actor, Origin: a.Origin, ReadPath: path, ExpiresAt: e.now().UTC().Add(time.Duration(seconds) * time.Second), Remaining: uses}
+	g := LoginGrant{ID: newID("login_grant"), AccountID: a.ID, AgentID: actor, Origin: a.Origin, ReadPath: path, Revision: e.state.Revision, Remaining: uses}
+	if seconds > 0 {
+		expiry := e.now().UTC().Add(time.Duration(seconds) * time.Second)
+		g.ExpiresAt = &expiry
+	}
+	e.state.LoginGrants[g.ID] = &g
 	if err := e.record("login_grant.created", "operator", g.ID, "Website login scope approved"); err != nil {
+		delete(e.state.LoginGrants, g.ID)
 		return LoginGrant{}, err
 	}
-	e.loginGrants[g.ID] = &g
 	return g, nil
 }
 func (e *Engine) revokeLoginLocked(g *LoginGrant) {
@@ -164,11 +174,14 @@ func (e *Engine) revokeLoginLocked(g *LoginGrant) {
 func (e *Engine) RevokeLoginGrant(id string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	g := e.loginGrants[id]
+	g := e.state.LoginGrants[id]
 	if g == nil {
 		return errors.New("grant not found")
 	}
+	previous := g.Revoked
+	g.Revoked = true
 	if err := e.record("login_grant.revoked", "operator", id, "Worker cancellation requested"); err != nil {
+		g.Revoked = previous
 		return err
 	}
 	e.revokeLoginLocked(g)
@@ -179,7 +192,7 @@ func (e *Engine) LoginGrants(actor string) []LoginGrant {
 	defer e.mu.Unlock()
 	e.expire()
 	out := []LoginGrant{}
-	for _, g := range e.loginGrants {
+	for _, g := range e.state.LoginGrants {
 		if g.AgentID == actor {
 			out = append(out, *g)
 		}
@@ -190,8 +203,8 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.expire()
-	g := e.loginGrants[grant]
-	if g == nil || g.AgentID != actor || g.Revoked || g.Remaining < 1 || !e.now().Before(g.ExpiresAt) {
+	g := e.state.LoginGrants[grant]
+	if g == nil || g.AgentID != actor || g.Revision != e.state.Revision || g.Revoked || g.Remaining < 1 || g.expired(e.now()) {
 		return LoginRun{}, errors.New("active login grant not found")
 	}
 	a, agent := e.account(g.AccountID), e.agent(actor)
@@ -215,14 +228,15 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 	}
 	now := e.now().UTC()
 	deadline := now.Add(10 * time.Minute)
-	if g.ExpiresAt.Before(deadline) {
-		deadline = g.ExpiresAt
+	if g.ExpiresAt != nil && g.ExpiresAt.Before(deadline) {
+		deadline = *g.ExpiresAt
 	}
 	r := &LoginRun{ID: newID("login"), GrantID: g.ID, AgentID: actor, AccountID: a.ID, Origin: g.Origin, ReadPath: g.ReadPath, Status: "executing", CreatedAt: now, ExpiresAt: deadline, resume: make(chan struct{}, 1)}
+	g.Remaining--
 	if err := e.record("login.started", actor, r.ID, "Grant use consumed before controlled login"); err != nil {
+		g.Remaining++
 		return LoginRun{}, err
 	}
-	g.Remaining--
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	r.cancel = cancel
 	e.loginRuns[r.ID] = r
@@ -363,7 +377,7 @@ func (e *Engine) loginSnapshot(s *Snapshot) {
 	for _, a := range e.state.WebAccounts {
 		s.WebAccounts = append(s.WebAccounts, publicAccount(a))
 	}
-	for _, g := range e.loginGrants {
+	for _, g := range e.state.LoginGrants {
 		s.LoginGrants = append(s.LoginGrants, *g)
 	}
 	for _, r := range e.loginRuns {

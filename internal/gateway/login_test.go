@@ -99,8 +99,8 @@ func TestControlledLoginHumanGateAndNoSecret(t *testing.T) {
 	if err != nil || recovered.state.WebAccounts[0].Password != "FakeOnly-Pass-582" {
 		t.Fatal("encrypted reload failed")
 	}
-	if len(recovered.loginGrants) != 0 || len(recovered.loginRuns) != 0 {
-		t.Fatal("runtime grant survived restart")
+	if recovered.state.LoginGrants[g.ID].Remaining != 0 || len(recovered.loginRuns) != 0 {
+		t.Fatal("restart restored consumed budget or runtime run")
 	}
 }
 func TestControlledLoginAtomicBudgetAndCancellation(t *testing.T) {
@@ -164,7 +164,7 @@ func TestControlledLoginValidationSaveFailureAndInvalidation(t *testing.T) {
 	if _, err := f.e.StartLogin(f.actor, g.ID); err == nil {
 		t.Fatal("dispatched without audit")
 	}
-	if f.e.loginGrants[g.ID].Remaining != 1 {
+	if f.e.state.LoginGrants[g.ID].Remaining != 1 {
 		t.Fatal("failed save consumed grant")
 	}
 	f.e.store.dir = originalDir
@@ -191,7 +191,8 @@ func TestControlledLoginExpiryAndWorkerOutputFilter(t *testing.T) {
 		return ctx.Err()
 	})
 	f.e.mu.Lock()
-	f.e.loginGrants[g.ID].ExpiresAt = time.Now().Add(30 * time.Millisecond)
+	expiry := time.Now().Add(30 * time.Millisecond)
+	f.e.state.LoginGrants[g.ID].ExpiresAt = &expiry
 	f.e.mu.Unlock()
 	r, err := f.e.StartLogin(f.actor, g.ID)
 	if err != nil {
@@ -255,4 +256,89 @@ func TestControlledLoginHTTPBoundaries(t *testing.T) {
 		t.Fatal("delete failed")
 	}
 	awaitLogin(t, f, r.ID, "cancelled")
+}
+
+func TestNoExpiryGrantSurvivesRestartWithBudgetAndRevocation(t *testing.T) {
+	runner := func(ctx context.Context, in LoginInput, emit func(LoginEvent) error, resume <-chan struct{}) error {
+		if in.Deadline.Sub(time.Now()) > 10*time.Minute {
+			t.Error("unbounded worker lifetime")
+		}
+		return emit(LoginEvent{Status: "completed", Authenticated: true})
+	}
+	f, a, _ := loginFixture(t, runner)
+	g, err := f.e.CreateLoginGrant(a.ID, f.actor, "", 0, 2)
+	if err != nil || g.ExpiresAt != nil {
+		t.Fatal("no-expiry grant rejected", err)
+	}
+	f.e.CloseLogins()
+	restored, err := NewEngine(f.e.store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored.SetLoginRunner(runner)
+	f.e = restored
+	t.Cleanup(restored.CloseLogins)
+	if got := restored.LoginGrants(f.actor); len(got) != 2 {
+		t.Fatal("grants lost on restart")
+	}
+	r, err := restored.StartLogin(f.actor, g.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	awaitLogin(t, f, r.ID, "completed")
+	restored.CloseLogins()
+	restored, err = NewEngine(f.e.store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.e = restored
+	restored.SetLoginRunner(runner)
+	t.Cleanup(restored.CloseLogins)
+	if restored.state.LoginGrants[g.ID].Remaining != 1 {
+		t.Fatal("budget reset across restart")
+	}
+	if err := restored.RevokeLoginGrant(g.ID); err != nil {
+		t.Fatal(err)
+	}
+	last, err := NewEngine(restored.store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	last.SetLoginRunner(runner)
+	t.Cleanup(last.CloseLogins)
+	if _, err = last.StartLogin(f.actor, g.ID); err == nil {
+		t.Fatal("revoked grant resurrected")
+	}
+}
+func TestPersistentGrantConfigInvalidationAndSaveRollback(t *testing.T) {
+	f, a, g := loginFixture(t, func(ctx context.Context, in LoginInput, emit func(LoginEvent) error, resume <-chan struct{}) error {
+		return emit(LoginEvent{Status: "completed", Authenticated: true})
+	})
+	originalDir := f.e.store.dir
+	f.e.store.dir = filepath.Join(t.TempDir(), "missing")
+	if _, err := f.e.CreateLoginGrant(a.ID, f.actor, "", 0, 2); err == nil {
+		t.Fatal("failed save created grant")
+	}
+	if len(f.e.state.LoginGrants) != 1 {
+		t.Fatal("failed grant retained")
+	}
+	if err := f.e.RevokeLoginGrant(g.ID); err == nil || f.e.state.LoginGrants[g.ID].Revoked {
+		t.Fatal("failed revoke not rolled back")
+	}
+	f.e.store.dir = originalDir
+	if _, _, err := f.e.PutAgent(f.actor, "Updated label", true); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := NewEngine(f.e.store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	restored.SetLoginRunner(f.e.loginRunner)
+	t.Cleanup(restored.CloseLogins)
+	if !restored.state.LoginGrants[g.ID].Revoked {
+		t.Fatal("configuration invalidation lost on reload")
+	}
+	if _, err := restored.StartLogin(f.actor, g.ID); err == nil {
+		t.Fatal("invalidated grant executed after restart")
+	}
 }

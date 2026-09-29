@@ -30,3 +30,5 @@ For ordinary website passwords, QR and MFA, use the [browser login handoff](BROW
 ## Automatic saved-credential login (v0.4)
 
 Use `grantide web-login`, not `browser-login`, when the operator wants saved credentials to be filled automatically. See [CONTROLLED-LOGIN.md](CONTROLLED-LOGIN.md). The operator saves an account and creates a scoped grant in **Automatic login**; the agent lists only its own grants and submits the nonsecret reference. MFA/CAPTCHA still requires the human. This uses a separate worker-owned browser and returns only status plus explicitly authorized structured fields. It does not log Safari/IAB into the account or grant general browser access.
+
+When account entry is needed, use `web-login --setup --label "CloudCone · LA1"` and open the returned setup URL. Suggest a nonsecret label from the task context; leave it editable and preserve existing names. Operators can choose no-expiry grants (`seconds: 0`), independently of the use budget. Do not silently grant access when preparing an entry form.

@@ -14,7 +14,6 @@ import (
 
 type Engine struct {
 	loginRunner LoginRunner
-	loginGrants map[string]*LoginGrant
 	loginRuns   map[string]*LoginRun
 	loginBusy   bool
 	loginClosed bool
@@ -39,7 +38,14 @@ func NewEngine(store *Store, demo bool) (*Engine, error) {
 		return nil, err
 	}
 	e := &Engine{store: store, state: state, requests: map[string]*Request{}, leases: map[string]*Lease{}, credentials: map[string]*CredentialRequest{}, handoffs: map[string]*BrowserHandoff{}, demo: demo, now: time.Now}
-	e.loginGrants = map[string]*LoginGrant{}
+	if e.state.LoginGrants == nil {
+		e.state.LoginGrants = map[string]*LoginGrant{}
+	}
+	for _, g := range e.state.LoginGrants {
+		if g.Revision != e.state.Revision {
+			g.Revoked = true
+		}
+	}
 	e.loginRuns = map[string]*LoginRun{}
 	e.executor = executeHTTP
 	if demo && len(state.Services) == 0 && len(state.Agents) == 0 && len(state.Rules) == 0 {
@@ -123,7 +129,7 @@ func (e *Engine) mutate(action, target string, fn func() error) error {
 }
 
 func (e *Engine) invalidatePending() {
-	for _, g := range e.loginGrants {
+	for _, g := range e.state.LoginGrants {
 		e.revokeLoginLocked(g)
 	}
 	for _, r := range e.handoffs {

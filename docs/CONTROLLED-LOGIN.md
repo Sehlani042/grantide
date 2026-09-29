@@ -19,11 +19,11 @@ On Linux, install Playwright's documented browser system dependencies and use a 
 
 ## Operator
 
-Open **Automatic login** (`?view=vault`). Save a CloudCone account with a nonsecret label, email and password. Passwords are encrypted in the existing private store; snapshots return neither password nor email. Blank credentials while editing preserve previous values; delete removes the saved account from current state. Historical private backups may still contain encrypted copies.
+Open **Automatic login** (`?view=vault`). New accounts start with an editable `CloudCone` label. An agent can run `grantide web-login --setup --label "CloudCone · LA1"` and open the returned local `setup_url` to prefill a contextual, nonsecret label. Existing account names are preserved. Save the account with its email and password. Passwords are encrypted in the existing private store; snapshots return neither password nor email. Blank credentials while editing preserve previous values; delete removes the saved account from current state. Historical private backups may still contain encrypted copies.
 
-Create a grant selecting one agent, 30 seconds–24 hours and 1–20 login attempts. The origin is fixed to `https://app.cloudcone.com`. An optional exact `/compute/NUMBER` or `/vps/NUMBER` overview path additionally allows a small fixed inventory-field extractor. Leave it blank to verify login only. Copy the nonsecret `login_grant_...` reference, or let the agent list its grants. Saving credentials does not start a login. Agent references and runtime grants are not passwords.
+Create a grant selecting one agent, 30 seconds–24 hours or **No expiry (revocable)**, and 1–20 login attempts. API `seconds: 0` explicitly requests no expiry; `expires_at: null` represents it. The use budget remains separate. The origin is fixed to `https://app.cloudcone.com`. An optional exact `/compute/NUMBER` or `/vps/NUMBER` overview path additionally allows a small fixed inventory-field extractor. Leave it blank to verify login only. Copy the nonsecret `login_grant_...` reference, or let the agent list its grants. Saving credentials does not start a login. Agent references and runtime grants are not passwords.
 
-Grant expiry is a dispatch boundary and a worker deadline. A run lasts no more than ten minutes, capped by grant expiry. One browser may run at a time. Uses are consumed before dispatch and not refunded after network/login failure. Grants and runs vanish on restart; **any configuration mutation revokes grants and cancels active runs**. Revocation/cancellation closes the worker browser; an already submitted website request cannot be undone. The service does not revoke a provider-side session remotely.
+Grant expiry is a dispatch boundary and a worker deadline. A run lasts no more than ten minutes, capped by grant expiry. One browser may run at a time. Uses are consumed before dispatch and not refunded after network/login failure. Grants, remaining budgets and revocations are persisted in the encrypted store and survive restart. Active runs end on restart. **Any configuration mutation revokes grants and cancels active runs**; revision binding prevents old grants from reviving after a restart. Revocation/cancellation closes the worker browser; an already submitted website request cannot be undone. The service does not revoke a provider-side session remotely.
 
 The CloudCone public login form checked on 2026-09-29 includes a CAPTCHA. The worker fills the saved credentials, then publishes `human_required`. Complete CAPTCHA/MFA and submit login in the **Chromium window opened by Grantide**, then click **Challenge finished — verify** in Grantide. The worker makes no page observations while it awaits this operator signal. This signal is not authentication proof. Do not let a separate agent/screen tool inspect the window during entry.
 
@@ -32,6 +32,7 @@ The CloudCone public login form checked on 2026-09-29 includes a CAPTCHA. The wo
 Only configure that agent's token, never the operator token:
 
 ```sh
+grantide web-login --setup --label "CloudCone · LA1"
 grantide web-login --list
 grantide web-login --grant login_grant_EXAMPLE --wait 30s
 grantide web-login --id login_EXAMPLE --wait 30s

@@ -95,14 +95,15 @@ type Event struct {
 }
 
 type State struct {
-	WebAccounts  []WebAccount  `json:"web_accounts"`
-	BrowserSites []BrowserSite `json:"browser_sites"`
-	Schema       int           `json:"schema"`
-	Revision     int           `json:"revision"`
-	Agents       []Agent       `json:"agents"`
-	Services     []Service     `json:"services"`
-	Rules        []Rule        `json:"rules"`
-	Audit        []Event       `json:"audit"`
+	LoginGrants  map[string]*LoginGrant `json:"login_grants,omitempty"`
+	WebAccounts  []WebAccount           `json:"web_accounts"`
+	BrowserSites []BrowserSite          `json:"browser_sites"`
+	Schema       int                    `json:"schema"`
+	Revision     int                    `json:"revision"`
+	Agents       []Agent                `json:"agents"`
+	Services     []Service              `json:"services"`
+	Rules        []Rule                 `json:"rules"`
+	Audit        []Event                `json:"audit"`
 }
 
 type CredentialRequest struct {

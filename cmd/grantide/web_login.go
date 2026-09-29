@@ -13,10 +13,14 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 func webLogin(args []string) error {
 	f := flag.NewFlagSet("web-login", flag.ContinueOnError)
+	setup := f.Bool("setup", false, "prepare the editable account-entry form; never saves credentials")
+	label := f.String("label", "", "suggested non-secret account label for --setup")
 	grant := f.String("grant", "", "operator-issued non-secret grant reference")
 	id := f.String("id", "", "poll an existing run")
 	list := f.Bool("list", false, "list grants issued to this agent")
@@ -28,6 +32,9 @@ func webLogin(args []string) error {
 	if *wait < 0 || *wait > 60*time.Second {
 		return errors.New("wait must be between 0 and 60s")
 	}
+	if (*setup && (*id != "" || *grant != "" || *list || *cancel || *wait != 0)) || (!*setup && *label != "") {
+		return errors.New("use --setup [--label NAME] separately from login execution")
+	}
 	ref := regexp.MustCompile(`^login_[a-z0-9_]+$`)
 	if (*id != "" && !ref.MatchString(*id)) || (*grant != "" && !ref.MatchString(*grant)) || (*cancel && *id == "") || (*list && (*id != "" || *grant != "")) || (*grant != "" && *id != "") {
 		return errors.New("choose --list, --grant REF or --id RUN [--cancel]")
@@ -37,6 +44,16 @@ func webLogin(args []string) error {
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Path != "" || len(token) != 64 {
 		return errors.New("configure the loopback GRANTIDE_URL and agent GRANTIDE_TOKEN")
+	}
+	if *setup {
+		name := strings.TrimSpace(*label)
+		if name == "" {
+			name = "CloudCone"
+		}
+		if !utf8.ValidString(name) || utf8.RuneCountInString(name) > 100 || strings.ContainsFunc(name, unicode.IsControl) {
+			return errors.New("account label must be 1–100 characters without controls")
+		}
+		return json.NewEncoder(os.Stdout).Encode(map[string]string{"setup_url": base + "/?view=vault#account-label=" + url.QueryEscape(name), "suggested_label": name})
 	}
 	client := &http.Client{Timeout: 15 * time.Second, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	send := func(method, path string, v any) ([]byte, error) {
