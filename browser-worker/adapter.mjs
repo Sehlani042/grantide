@@ -9,7 +9,7 @@ export function allowedRequest(raw, method, phase, readPath, resourceType = 'doc
   if (u.pathname === '/favicon.ico') return resourceType === 'image';
   if (phase === 'login' && u.pathname === '/captcha') return resourceType === 'image' && [...u.searchParams.keys()].every(k=>['_CAPTCHA','t'].includes(k));
   if (u.search) return false;
-  if (['/', '/compute', '/vps'].includes(u.pathname)) return true;
+  if (['/', '/cloud', '/compute', '/vps'].includes(u.pathname)) return true;
   if (u.pathname === '/login') return phase === 'login';
   return phase === 'read' && overviewPath.test(readPath) && u.pathname === readPath;
 }

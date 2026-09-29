@@ -1,5 +1,20 @@
 import {origin,allowedRequest,isAuthenticated,fillLogin,hasChallenge,readInventory,filterInventory} from './adapter.mjs';
 
+// Browser routing alone does not reliably intercept every server redirect hop.
+// Fetch without redirects and never deliver a redirect for Chromium to follow.
+export async function dispatchWithoutRedirects(route) {
+  let response;
+  try {
+    response=await route.fetch({maxRedirects:0,maxRetries:0,timeout:30000});
+    if(response.status()>=300&&response.status()<400)return await route.abort();
+    await route.fulfill({response});
+  }catch{
+    await route.abort().catch(()=>{});
+  }finally{
+    await response?.dispose();
+  }
+}
+
 async function validLoginPost(request,input) {
   try {
     const body=request.postDataBuffer();if(!body||body.length>16384)return false;
@@ -10,13 +25,13 @@ async function validLoginPost(request,input) {
   }catch{return false;}
 }
 // Only the fixed entry point constructs this context. Injection here is for fake-site tests.
-export async function loginWorkflow(context,input,{human,stopped=()=>false}) {
+export async function loginWorkflow(context,input,{human,stopped=()=>false,dispatch=dispatchWithoutRedirects}) {
   let phase='login',loginPosts=0,page;
   await context.route('**/*',async route=>{
     const r=route.request();
     if(stopped()||!allowedRequest(r.url(),r.method(),phase,input.read_path,r.resourceType()))return route.abort();
     if(r.method()==='POST'&&(++loginPosts>3||!await validLoginPost(r,input)))return route.abort();
-    return route.fallback();
+    return dispatch(route);
   });
   await context.routeWebSocket('**/*',ws=>ws.close());
   page=await context.newPage();
