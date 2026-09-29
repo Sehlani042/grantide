@@ -75,3 +75,9 @@ Codex 可通过 `grantide credential` 发起申请，你在“凭证申请”页
 ## 浏览器网站登录
 
 `grantide browser-login` 把登录交接登记到界面，显示原对话、浏览器和标签。你在原网站输入密码、扫码或完成验证码，再在允界确认；原 Agent 核验同一标签后继续。此功能依靠接入方暂停读取，不能锁住独立浏览器工具，也不会自动向其他对话发消息。登录完成不代表批准购买。详见 [接入说明](docs/BROWSER-HANDOFF.md)。
+
+## 自动凭据登录与跨对话复用（v0.4 开发版）
+
+`grantide web-login` 使用保存在允界的账号和指定 Agent 的授权，由受控 Chromium 填写凭据。CloudCone 真实登录已验证成功，其中一次图片验证码由外部 AI 在用户授权后操作完成；允界尚未内置验证码自动识别。真实资产提取及后续传输修复仍需实际账号验证。流程结束会关闭浏览器，其他对话不会继承会话。
+
+其他对话可阅读 [grantide-login Skill](skills/grantide-login/SKILL.md) 接入。将仓库的 `skills/grantide-login` 目录链接到本机 Codex skills 目录，即可作为复用入口；已有对话若未刷新技能目录，可直接读取该文件。[操作契约](docs/CONTROLLED-LOGIN.md)和[开发经验及验证边界](docs/LOGIN-LESSONS.md)分别记录调用方法与证据。

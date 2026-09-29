@@ -102,4 +102,6 @@ For website login, agents can use `grantide browser-login` to pause for human pa
 
 ## Automatic website login (v0.4 development)
 
-Save a website account in the local GUI, issue a scoped grant, and invoke `grantide web-login --grant REF`. An optional controlled Chromium worker fills credentials and handles the ordinary login flow; CAPTCHA/MFA remains human-assisted. Only CloudCone is currently adapted, with real-account verification pending. This does not export a browser session to general agent tools. See [setup, CLI and security boundaries](docs/CONTROLLED-LOGIN.md).
+Save a website account in the local GUI, issue a scoped grant, and invoke `grantide web-login --grant REF`. An optional controlled Chromium worker fills credentials and handles the ordinary login flow; CAPTCHA/MFA uses an operator handoff. CloudCone login was verified with external AI assistance for one CAPTCHA; live inventory extraction and the later transport revision still need real-account validation. This does not export a browser session to general agent tools. See [setup, CLI and security boundaries](docs/CONTROLLED-LOGIN.md).
+
+For reuse in another Codex chat, read the [grantide-login skill](skills/grantide-login/SKILL.md). To install locally, link this checkout's `skills/grantide-login` directory into your Codex skills directory. The link keeps the skill and its relative documentation together. Existing chats can read the file explicitly if their skill catalog has not refreshed. [Development lessons and evidence](docs/LOGIN-LESSONS.md).
