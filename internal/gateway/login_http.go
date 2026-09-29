@@ -78,6 +78,45 @@ func (e *Engine) loginRoutes(mux *http.ServeMux, admin func(http.HandlerFunc) ht
 		}
 		jsonResponse(w, 202, out)
 	}))
+	mux.HandleFunc("POST /v1/extension-logins", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
+		var in struct {
+			GrantID string `json:"grant_id"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		out, err := e.StartExtensionLogin(actor, in.GrantID)
+		if err != nil {
+			fail(w, 403, err.Error())
+			return
+		}
+		jsonResponse(w, 202, out)
+	}))
+	mux.HandleFunc("GET /admin/extension/next", admin(func(w http.ResponseWriter, r *http.Request) {
+		jsonResponse(w, 200, e.NextExtensionLogin())
+	}))
+	mux.HandleFunc("POST /admin/extension/logins/{id}/claim", admin(func(w http.ResponseWriter, r *http.Request) {
+		out, err := e.ClaimExtensionLogin(r.PathValue("id"))
+		if err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		jsonResponse(w, 200, out)
+	}))
+	mux.HandleFunc("POST /admin/extension/logins/{id}/complete", admin(func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Status string            `json:"status"`
+			Fields map[string]string `json:"fields"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		if err := e.CompleteExtensionLogin(r.PathValue("id"), in.Status, in.Fields); err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		jsonResponse(w, 200, map[string]bool{"ok": true})
+	}))
 	mux.HandleFunc("GET /v1/logins/{id}", agent(func(w http.ResponseWriter, r *http.Request, actor string) {
 		out, ok := e.GetLogin(actor, r.PathValue("id"))
 		if !ok {

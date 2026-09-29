@@ -9,3 +9,4 @@
 /.playwright-cli/
 /node_modules/
 /browser-worker/node_modules/
+__pycache__/

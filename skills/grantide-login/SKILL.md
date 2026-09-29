@@ -18,6 +18,7 @@ Use the calling task's configured agent CLI/wrapper. Do not copy another task's 
 | Need | Entry point | Result |
 | --- | --- | --- |
 | Saved website credentials filled by the controlled worker | `web-login` | Verified run status and optional authorized fields |
+| Saved CloudCone credentials filled in ordinary Chrome (paired extension) | `web-login --grant REF --extension` | Extension-reported verification; session remains in Chrome |
 | Human login in an existing independent browser | `browser-login` | Cooperative handoff and reported verification |
 | API key or HTTP Basic entry for an HTTP service | `credential` | Credential-entry status; execution remains separately authorized |
 
@@ -55,3 +56,5 @@ Share the skill/contract path, dated evidence, current limitations and the calli
 Login permission does not authorize purchases, renewal, reboot, deletion or account changes. A new task needs its own applicable authorization; shared learning is not shared authority.
 
 For adapter maintenance, consult [the development lessons](../../docs/LOGIN-LESSONS.md). Extend only the observed required routes and test actual network redirect behavior with fake credentials; mock fulfillment alone does not prove transport enforcement.
+
+For the Chrome adapter, read [extension setup and boundaries](../../docs/CHROME-EXTENSION.md). It must be installed and paired first. It cannot credit an unidentified existing session to a saved account. A Chrome session is not an in-app-browser session; do not promise cross-browser reuse.

@@ -259,7 +259,9 @@ func (e *Engine) expire() {
 	for _, r := range e.loginRuns {
 		if loginActive(r.Status) && !now.Before(r.ExpiresAt) {
 			r.Status = "expired"
-			r.cancel()
+			if r.cancel != nil {
+				r.cancel()
+			}
 		}
 	}
 	for _, r := range e.handoffs {

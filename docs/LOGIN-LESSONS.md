@@ -16,9 +16,9 @@ Challenge handling should use the current action's authorization and the actual 
 
 ## Validate the transport, not only the route predicate
 
-The live page navigated to `/cloud`, which was missing from the allowlist. Add the observed route rather than widening access to all paths. A separate HTTP redirect exposed that browser routing alone may miss later hops. The revised transport uses `route.fetch({maxRedirects: 0})` and rejects all 3xx responses before the browser can follow them. This also rejects same-origin HTTP redirects, a deliberate compatibility limitation requiring review when the provider flow changes.
+The live page navigated to `/cloud`, which was missing from the allowlist. Add the observed route rather than widening access to all paths. A separate HTTP redirect exposed that browser routing alone may miss later hops. The first repair used `route.fetch({maxRedirects: 0})`, but its Node TLS path disconnected on this desktop while Chromium's native path worked. The replacement continues browser requests natively and fails all 3xx at a CDP response-stage pause, before Chromium can follow. Same-origin HTTP redirects remain rejected, a deliberate compatibility limitation requiring review when the provider flow changes.
 
-Use real local HTTP endpoints and fake secrets to check that a second-hop destination receives no request. A mocked redirect response alone did not establish that property. Official reference: [Playwright route.fetch](https://playwright.dev/docs/api/class-route#route-fetch), checked 2026-09-30; also checked the installed Playwright 1.63.0 API notes about routing redirects.
+Use real local HTTP endpoints and fake secrets to check that a second-hop destination receives no request. A mocked redirect response alone did not establish that property. Also test actual provider resource loading with fake inputs: a green local test suite did not reveal the `route.fetch` TLS incompatibility. Installed Playwright 1.63.0 API and Chromium CDP `Fetch` behavior were checked on 2026-09-30.
 
 ## Evidence and remaining work
 
@@ -33,3 +33,8 @@ Use real local HTTP endpoints and fake secrets to check that a second-hop destin
 ## Reuse entry point
 
 Use [grantide-login](../skills/grantide-login/SKILL.md) for operating instructions. Installing or sharing a skill lets another chat read the method; it does not automatically load the chat, share cookies, copy credentials or issue grants. Keep runtime references and private account details out of shared lessons.
+
+## Ordinary-browser extension lessons (2026-09-30)
+The extension reuses a browser network/profile path but also inherits its shared session and observation boundary. Fixed login markers do not identify the account: an existing session must not be credited to a grant’s saved account without identity evidence. Keep the administrator token in a restricted local native host, not extension storage. A one-time credential claim is dispatch; cancellation cannot recall it or sign out a provider session. Fake DOM/API tests establish adapter behavior, while Chrome installation and real login remain separate gates.
+
+Later direct Chromium probes failed in both headful and headless modes, despite an earlier native-path public-page success. Do not freeze a transient success into a complete TLS diagnosis. The native/CDP replacement is locally tested; live connectivity remains unresolved.

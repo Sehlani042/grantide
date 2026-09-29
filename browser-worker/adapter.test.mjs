@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
 import {allowedRequest,origin} from './adapter.mjs';
-import {loginWorkflow as workflow,dispatchWithoutRedirects} from './workflow.mjs';
+import {loginWorkflow as workflow,installRedirectGuard} from './workflow.mjs';
 import {createServer} from 'node:http';
 // Fake pages exercise the policy/workflow; real HTTP tests below exercise transport.
 const loginWorkflow=(context,input,options)=>workflow(context,input,{...options,dispatch:route=>route.fallback()});
@@ -62,7 +62,7 @@ test('only the exact approved VPS manage page can be read',async t=>{
  assert.deepEqual(result.fields,{cpu:'2 cores',memory:'2 GB'});
 });
 
-test('real HTTP transport blocks redirects before any second-hop request',async t=>{
+test('native browser transport blocks redirects before any second-hop request',async t=>{
  const received=[];
  const server=createServer(async(req,res)=>{
   let body='';for await(const part of req)body+=part;
@@ -78,8 +78,7 @@ test('real HTTP transport blocks redirects before any second-hop request',async 
  const base=`http://127.0.0.1:${server.address().port}`;
  const browser=await chromium.launch({headless:true});t.after(()=>browser.close());
  const context=await browser.newContext({serviceWorkers:'block'});
- await context.route('**/*',dispatchWithoutRedirects);
- const page=await context.newPage();await page.goto(base+'/ok');
+ const page=await context.newPage();await installRedirectGuard(context,page);await page.goto(base+'/ok');
  assert.equal(await page.locator('p').textContent(),'OK');
  assert.ok((await context.cookies()).some(c=>c.name==='fixture'&&c.value==='yes'));
  for(const status of [301,302,303,307,308]){

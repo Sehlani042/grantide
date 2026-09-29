@@ -1,18 +1,32 @@
 import {origin,allowedRequest,isAuthenticated,fillLogin,hasChallenge,readInventory,filterInventory} from './adapter.mjs';
 
-// Browser routing alone does not reliably intercept every server redirect hop.
-// Fetch without redirects and never deliver a redirect for Chromium to follow.
-export async function dispatchWithoutRedirects(route) {
-  let response;
-  try {
-    response=await route.fetch({maxRedirects:0,maxRetries:0,timeout:30000});
-    if(response.status()>=300&&response.status()<400)return await route.abort();
-    await route.fulfill({response});
-  }catch{
-    await route.abort().catch(()=>{});
-  }finally{
-    await response?.dispose();
-  }
+// Native Chromium networking uses the operator's working network path. Pause
+// responses before Chromium follows redirects, including redirect hops that
+// Playwright's request router does not invoke again.
+export async function installRedirectGuard(context,page) {
+  const cdp=await context.newCDPSession(page);
+  cdp.on('Fetch.requestPaused',async event=>{
+    const id=event.requestId, status=event.responseStatusCode;
+    try {
+      if(typeof status!=='number') {
+        // Chromium can surface an initial request-stage pause even with a
+        // response-stage pattern. The request router already checked this URL;
+        // still reject a redirect hop that changes origin before it proceeds.
+        if(new URL(event.request.url).origin!==origin) {
+          await cdp.send('Fetch.failRequest',{requestId:id,errorReason:'BlockedByClient'});
+        }else{
+          await cdp.send('Fetch.continueRequest',{requestId:id});
+        }
+      }else if(status>=300&&status<400) {
+        await cdp.send('Fetch.failRequest',{requestId:id,errorReason:'BlockedByClient'});
+      }else{
+        await cdp.send('Fetch.continueResponse',{requestId:id});
+      }
+    }catch{
+      await cdp.send('Fetch.failRequest',{requestId:id,errorReason:'BlockedByClient'}).catch(()=>{});
+    }
+  });
+  await cdp.send('Fetch.enable',{patterns:[{urlPattern:'*',requestStage:'Response'}]});
 }
 
 async function validLoginPost(request,input) {
@@ -25,7 +39,7 @@ async function validLoginPost(request,input) {
   }catch{return false;}
 }
 // Only the fixed entry point constructs this context. Injection here is for fake-site tests.
-export async function loginWorkflow(context,input,{human,stopped=()=>false,dispatch=dispatchWithoutRedirects}) {
+export async function loginWorkflow(context,input,{human,stopped=()=>false,dispatch=route=>route.continue()}) {
   let phase='login',loginPosts=0,page;
   await context.route('**/*',async route=>{
     const r=route.request();
@@ -38,6 +52,7 @@ export async function loginWorkflow(context,input,{human,stopped=()=>false,dispa
   context.on('page',p=>{if(p!==page)p.close().catch(()=>{});});
   page.setDefaultTimeout(10000);
   page.on('dialog',d=>d.dismiss().catch(()=>{}));
+  await installRedirectGuard(context,page);
   await page.goto(origin+'/',{waitUntil:'domcontentloaded',timeout:30000});
   if(stopped())throw new Error('cancelled');
   await fillLogin(page,input);

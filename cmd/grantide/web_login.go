@@ -22,6 +22,7 @@ func webLogin(args []string) error {
 	setup := f.Bool("setup", false, "prepare the editable account-entry form; never saves credentials")
 	label := f.String("label", "", "suggested non-secret account label for --setup")
 	grant := f.String("grant", "", "operator-issued non-secret grant reference")
+	extension := f.Bool("extension", false, "use the paired Chrome extension and existing browser tab")
 	id := f.String("id", "", "poll an existing run")
 	list := f.Bool("list", false, "list grants issued to this agent")
 	cancel := f.Bool("cancel", false, "cancel --id")
@@ -32,12 +33,15 @@ func webLogin(args []string) error {
 	if *wait < 0 || *wait > 60*time.Second {
 		return errors.New("wait must be between 0 and 60s")
 	}
-	if (*setup && (*id != "" || *grant != "" || *list || *cancel || *wait != 0)) || (!*setup && *label != "") {
+	if (*setup && (*id != "" || *grant != "" || *list || *cancel || *wait != 0 || *extension)) || (!*setup && *label != "") {
 		return errors.New("use --setup [--label NAME] separately from login execution")
 	}
 	ref := regexp.MustCompile(`^login_[a-z0-9_]+$`)
 	if (*id != "" && !ref.MatchString(*id)) || (*grant != "" && !ref.MatchString(*grant)) || (*cancel && *id == "") || (*list && (*id != "" || *grant != "")) || (*grant != "" && *id != "") {
 		return errors.New("choose --list, --grant REF or --id RUN [--cancel]")
+	}
+	if *extension && *grant == "" {
+		return errors.New("--extension requires --grant REF")
 	}
 	base := strings.TrimSuffix(os.Getenv("GRANTIDE_URL"), "/")
 	token := os.Getenv("GRANTIDE_TOKEN")
@@ -83,7 +87,11 @@ func webLogin(args []string) error {
 	} else if *id != "" {
 		b, err = send("GET", "/v1/logins/"+*id, nil)
 	} else if *grant != "" {
-		b, err = send("POST", "/v1/logins", map[string]string{"grant_id": *grant})
+		path := "/v1/logins"
+		if *extension {
+			path = "/v1/extension-logins"
+		}
+		b, err = send("POST", path, map[string]string{"grant_id": *grant})
 	} else {
 		return errors.New("choose --list, --grant REF or --id RUN")
 	}
@@ -99,7 +107,7 @@ func webLogin(args []string) error {
 		if json.Unmarshal(b, &result) != nil {
 			return errors.New("invalid gateway response")
 		}
-		if result.Status != "executing" || *wait == 0 || time.Now().After(deadline) {
+		if (result.Status != "executing" && result.Status != "extension_pending" && result.Status != "extension_claimed") || *wait == 0 || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(time.Second)

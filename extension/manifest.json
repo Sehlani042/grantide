@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Grantide · 允界",
+  "version": "0.1.0",
+  "description": "Use scoped Grantide login grants in your existing CloudCone browser tab.",
+  "permissions": ["alarms", "nativeMessaging", "scripting", "storage"],
+  "host_permissions": ["https://app.cloudcone.com/*"],
+  "background": {"service_worker": "background.js"},
+  "action": {"default_title": "Grantide", "default_popup": "popup.html"},
+  "minimum_chrome_version": "120"
+}

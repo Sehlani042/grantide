@@ -36,3 +36,9 @@
 - Exact request review, default deny, policy expiry, revocable grants and atomic call budgets.
 - Responsive Chinese/English console and CLI result polling.
 - Race/integration verification and macOS/Linux/Windows release archives.
+
+## 2026-09-30 · Chrome extension development
+- Added a Manifest V3 CloudCone adapter using existing Chrome tabs, scoped login grants and a one-time credential claim.
+- Added a restricted Go Native Messaging host and exact-ID macOS/Linux pairing installer; administrator tokens stay in the local host.
+- Added extension task status/UI/CLI, shared budget/cooldown/failure controls and secret-free bounded results.
+- Existing-session account matching and live extension login remain unverified; provider sessions remain in Chrome.

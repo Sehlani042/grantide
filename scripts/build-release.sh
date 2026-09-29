@@ -12,6 +12,9 @@ for platform in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64 windows/amd64;
   CGO_ENABLED=0 GOOS="$target_os" GOARCH="$target_arch" go build -trimpath -ldflags='-s -w' -o "$target_dir/$executable" ./cmd/grantide
   cp LICENSE README.md README.zh-CN.md SECURITY.md PRD.md DESIGN.md TEST.md RELEASE.md "$target_dir/"
   cp -R docs "$target_dir/"
+  cp -R extension "$target_dir/"
+  mkdir -p "$target_dir/scripts"
+  cp scripts/install-native-host.py "$target_dir/scripts/"
   if [[ "$target_os" == windows ]]; then
     python3 - "$target_dir" <<'PY'
 import pathlib, sys, zipfile

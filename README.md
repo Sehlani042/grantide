@@ -107,3 +107,7 @@ Save a website account in the local GUI, issue a scoped grant, and invoke `grant
 For reuse in another Codex chat, read the [grantide-login skill](skills/grantide-login/SKILL.md). To install locally, link this checkout's `skills/grantide-login` directory into your Codex skills directory. The link keeps the skill and its relative documentation together. Existing chats can read the file explicitly if their skill catalog has not refreshed. [Development lessons and evidence](docs/LOGIN-LESSONS.md).
 
 Expiry and usage count are independent: explicitly choose no expiry and/or unlimited uses, with revocation at any time. Account starts are at least 60 seconds apart; each run is capped at ten minutes. Failed/interrupted runs pause the account until operator review. Existing exhausted grants are not upgraded automatically.
+
+## Chrome extension (development)
+
+Use `grantide web-login --grant REF --extension` to fill a saved CloudCone account in an existing Chrome tab through a paired Native Messaging host. The unpacked Manifest V3 source, macOS/Linux installation and boundaries are in [Chrome extension setup](docs/CHROME-EXTENSION.md). Existing-session account matching and real extension login are not yet validated. Chrome sessions remain in Chrome; they are separate from Codex’s in-app browser.

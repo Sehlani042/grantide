@@ -51,6 +51,7 @@ type LoginRun struct {
 	Origin        string            `json:"origin"`
 	ReadPath      string            `json:"read_path,omitempty"`
 	Status        string            `json:"status"`
+	Transport     string            `json:"transport,omitempty"`
 	CreatedAt     time.Time         `json:"created_at"`
 	ExpiresAt     time.Time         `json:"expires_at"`
 	Authenticated bool              `json:"authenticated"`
@@ -79,7 +80,9 @@ func (g LoginGrant) expired(now time.Time) bool {
 	return g.ExpiresAt != nil && !now.Before(*g.ExpiresAt)
 }
 
-func loginActive(s string) bool { return s == "executing" || s == "human_required" }
+func loginActive(s string) bool {
+	return s == "executing" || s == "human_required" || s == "extension_pending" || s == "extension_claimed"
+}
 func publicAccount(a WebAccount) WebAccount {
 	a.SecretSet = a.Password != ""
 	a.Password = ""
@@ -150,9 +153,6 @@ func (e *Engine) CreateLoginGrantWithLimit(account, actor, path string, seconds,
 	defer e.mu.Unlock()
 	e.expire()
 	a, agent := e.account(account), e.agent(actor)
-	if e.loginRunner == nil {
-		return LoginGrant{}, errors.New("controlled browser worker is not configured")
-	}
 	validUses := (!unlimited && uses >= 1 && uses <= 20) || (unlimited && uses == 0)
 	if a == nil || !a.Enabled || agent == nil || !agent.Enabled || (seconds != 0 && (seconds < 30 || seconds > 86400)) || !validUses || (path != "" && !instancePath.MatchString(path)) {
 		return LoginGrant{}, errors.New("select an enabled account and agent, 0 (no expiry) or 30–86400 seconds, 1–20 uses or explicit unlimited_uses with uses=0, and an optional exact instance overview path")
@@ -184,7 +184,9 @@ func (e *Engine) revokeLoginLocked(g *LoginGrant) {
 	for _, r := range e.loginRuns {
 		if r.GrantID == g.ID && loginActive(r.Status) {
 			r.Status = "cancelled"
-			r.cancel()
+			if r.cancel != nil {
+				r.cancel()
+			}
 		}
 	}
 }
@@ -197,7 +199,7 @@ func (e *Engine) RevokeLoginGrant(id string) error {
 	}
 	previous := g.Revoked
 	g.Revoked = true
-	if err := e.record("login_grant.revoked", "operator", id, "Worker cancellation requested"); err != nil {
+	if err := e.record("login_grant.revoked", "operator", id, "Login cancellation requested; dispatched website actions cannot be recalled"); err != nil {
 		g.Revoked = previous
 		return err
 	}
@@ -235,7 +237,7 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 	if a == nil || !a.Enabled || agent == nil || !agent.Enabled || e.loginRunner == nil {
 		return LoginRun{}, errors.New("login is unavailable")
 	}
-	if e.loginBusy || e.loginClosed {
+	if e.loginBusy || e.extensionBusyLocked() || e.loginClosed {
 		return LoginRun{}, errors.New("a controlled browser is already active")
 	}
 	if a.LoginNeedsReview {
@@ -261,7 +263,7 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 	if g.ExpiresAt != nil && g.ExpiresAt.Before(deadline) {
 		deadline = *g.ExpiresAt
 	}
-	r := &LoginRun{ID: newID("login"), GrantID: g.ID, AgentID: actor, AccountID: a.ID, Origin: g.Origin, ReadPath: g.ReadPath, Status: "executing", CreatedAt: now, ExpiresAt: deadline, resume: make(chan struct{}, 1)}
+	r := &LoginRun{ID: newID("login"), GrantID: g.ID, AgentID: actor, AccountID: a.ID, Origin: g.Origin, ReadPath: g.ReadPath, Status: "executing", Transport: "worker", CreatedAt: now, ExpiresAt: deadline, resume: make(chan struct{}, 1)}
 	previousRemaining, previousNext, previousReview := g.Remaining, a.NextLoginAt, a.LoginNeedsReview
 	if !g.UnlimitedUses {
 		g.Remaining--
@@ -288,11 +290,12 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 func (e *Engine) ReviewAccountLogin(id string) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	e.expire()
 	a := e.account(id)
 	if a == nil || !a.LoginNeedsReview {
 		return errors.New("account is not waiting for login review")
 	}
-	if e.loginBusy {
+	if e.loginBusy || e.extensionBusyLocked() {
 		return errors.New("wait for the controlled browser to close")
 	}
 	a.LoginNeedsReview = false
@@ -412,11 +415,13 @@ func (e *Engine) CancelLogin(actor, id string) error {
 	if r == nil || (actor != "operator" && actor != r.AgentID) || !loginActive(r.Status) {
 		return errors.New("active run not found")
 	}
-	if err := e.record("login.cancelled", actor, id, "Worker cancellation requested"); err != nil {
+	if err := e.record("login.cancelled", actor, id, "Login cancellation requested; extension sessions remain in the browser"); err != nil {
 		return err
 	}
 	r.Status = "cancelled"
-	r.cancel()
+	if r.cancel != nil {
+		r.cancel()
+	}
 	return nil
 }
 func (e *Engine) CloseLogins() {
@@ -425,7 +430,9 @@ func (e *Engine) CloseLogins() {
 	for _, r := range e.loginRuns {
 		if loginActive(r.Status) {
 			r.Status = "cancelled"
-			r.cancel()
+			if r.cancel != nil {
+				r.cancel()
+			}
 		}
 	}
 	e.mu.Unlock()

@@ -83,3 +83,7 @@ Codex 可通过 `grantide credential` 发起申请，你在“凭证申请”页
 登录授权支持分别选择“无限期”和“无限次数”，随时可撤销。同一账号启动间隔至少 60 秒，单次最多 10 分钟；失败或中断后暂停，由操作者解除。旧的次数已耗尽授权不会自动升级。
 
 其他对话可阅读 [grantide-login Skill](skills/grantide-login/SKILL.md) 接入。将仓库的 `skills/grantide-login` 目录链接到本机 Codex skills 目录，即可作为复用入口；已有对话若未刷新技能目录，可直接读取该文件。[操作契约](docs/CONTROLLED-LOGIN.md)和[开发经验及验证边界](docs/LOGIN-LESSONS.md)分别记录调用方法与证据。
+
+## Chrome 扩展（开发版）
+
+已加入 Manifest V3 扩展，通过配对的本机 Native Messaging 组件，在 Chrome 标签页使用保存账号登录 CloudCone。Agent 使用 `web-login --grant REF --extension`；次数、冷却、撤销及失败暂停仍由允界管理。见[安装与边界](docs/CHROME-EXTENSION.md)。现有会话的账号核验与扩展实站登录尚未验证；Chrome 会话保留在 Chrome 中，与 Codex 内置浏览器分别管理。
