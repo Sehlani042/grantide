@@ -82,3 +82,9 @@ Operator endpoint: `POST /admin/credential-requests/{id}/decision` accepts `{dec
 Statuses: `pending`, `fulfilled`, `rejected`, `expired`, `invalidated`, `cancelled`. Requests expire after at most five minutes, deduplicate while pending, and disappear on restart. `fulfilled` means stored, not authenticated with the upstream and not authorized to execute. Saving changes the service-wide credential and invalidates prior grants/requests. Other agents with matching service policies also use the new credential.
 
 Service adds `auth_type: "header" | "basic"` (omission retains legacy header semantics), and `username`. Basic requires `auth_header: "Authorization"` and an empty `auth_prefix`; `secret` is the password. Browser HTML forms, cookies, MFA, SSH and sudo are not supported.
+
+## Controlled website login (separate v0.4 worker)
+
+See [the login contract](CONTROLLED-LOGIN.md) for credential entry and worker setup. Operator grants use `POST /admin/login-grants` with `{account_id, agent_id, read_path, seconds, uses, unlimited_uses}`. Finite grants accept 1–20 uses; unlimited grants require `unlimited_uses: true, uses: 0`. Duration is independent: `seconds: 0` means no expiry. `POST /admin/login-grants/{id}/revoke` revokes further use and cancels an active worker.
+
+Agent routes are `GET /v1/login-grants`, `POST /v1/logins` with `{grant_id}`, `GET /v1/logins/{id}`, and `POST /v1/logins/{id}/cancel`. Grant metadata includes `unlimited_uses`, `remaining`, `next_login_at` and `login_needs_review`; zero remaining alone never indicates unlimited permission. Account-level cooldown is 60 seconds between starts and persists across grants/restarts. A failed or interrupted run leaves the account paused. Operator-only `POST /admin/web-accounts/{id}/review-login` clears that pause while retaining cooldown; it cannot be called during an active worker. `POST /admin/logins/{id}/resume` remains the distinct action for an active CAPTCHA/MFA handoff.

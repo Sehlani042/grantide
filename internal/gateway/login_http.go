@@ -30,18 +30,26 @@ func (e *Engine) loginRoutes(mux *http.ServeMux, admin func(http.HandlerFunc) ht
 		}
 		jsonResponse(w, 200, map[string]bool{"ok": true})
 	}))
+	mux.HandleFunc("POST /admin/web-accounts/{id}/review-login", admin(func(w http.ResponseWriter, r *http.Request) {
+		if err := e.ReviewAccountLogin(r.PathValue("id")); err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+		jsonResponse(w, 200, map[string]bool{"ok": true})
+	}))
 	mux.HandleFunc("POST /admin/login-grants", admin(func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			AccountID string `json:"account_id"`
-			AgentID   string `json:"agent_id"`
-			ReadPath  string `json:"read_path"`
-			Seconds   int    `json:"seconds"`
-			Uses      int    `json:"uses"`
+			AccountID     string `json:"account_id"`
+			AgentID       string `json:"agent_id"`
+			ReadPath      string `json:"read_path"`
+			Seconds       int    `json:"seconds"`
+			Uses          int    `json:"uses"`
+			UnlimitedUses bool   `json:"unlimited_uses"`
 		}
 		if !decode(w, r, &in) {
 			return
 		}
-		out, err := e.CreateLoginGrant(in.AccountID, in.AgentID, in.ReadPath, in.Seconds, in.Uses)
+		out, err := e.CreateLoginGrantWithLimit(in.AccountID, in.AgentID, in.ReadPath, in.Seconds, in.Uses, in.UnlimitedUses)
 		if err != nil {
 			fail(w, 400, err.Error())
 			return

@@ -42,3 +42,8 @@ Acceptance: encrypted persistence, secret-free API/audit/errors, owner isolation
 
 ## Login setup refinements (2026-09-30)
 Account labels are suggested and editable. Agents can prepare a local account-entry link with a nonsecret contextual label; existing saved names and human-entered credentials are not replaced. Login grants offer explicit no-expiry duration, retaining independent use limits and per-run deadlines. Grants, budgets and revocations survive restart; configuration changes invalidate them.
+
+## Unlimited-use login grants (2026-09-30)
+Operators can explicitly choose unlimited login uses independently of expiry. Existing exhausted grants remain exhausted. Account, agent, fixed origin and exact optional read scope remain bound; revocation and ten-minute run ceilings still apply. Starts for one account are at least 60 seconds apart across grants and restarts. Each dispatch durably pauses further account logins until verified success; failure, interruption or crash leaves the pause for operator review. Review preserves the cooldown and grants no new scope. CAPTCHA/MFA still pauses the active worker.
+
+Acceptance: explicit opt-in only, finite/unlimited scope isolation, persistent per-account throttle and failure pause, one concurrent worker, atomic save rollback, operator-only review, live GUI selection, and exact `/vps/NUMBER/manage` path checks. Path support does not establish that the live page's fields are extractable.

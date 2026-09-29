@@ -31,7 +31,7 @@ The manual handoff is not a substitute for a request to use saved credentials au
 4. Keep the returned run ID and poll with `web-login --id RUN_REF --wait 30s`. A CLI wait timeout leaves the run active. Do not create duplicate runs to check progress.
 5. Inspect the returned status and evidence before continuing the requested task.
 
-`expires_at: null` means no expiry, not unlimited attempts or an unlimited browser lifetime. Uses remain separate; each run is capped at ten minutes. Failed attempts consume a use. Configuration changes invalidate grants. Never replenish a budget, reset state or repeatedly retry passwords as a workaround.
+`expires_at: null` means no expiry. Unlimited attempts require a separate `unlimited_uses: true`; `remaining: 0` without it remains exhausted. Each run is capped at ten minutes, and starts on the same saved account are at least 60 seconds apart across grants and restarts. Check `next_login_at` and `login_needs_review`: failed/interrupted runs remain paused until operator review, which does not reset cooldown. Active challenges use their separate resume flow. Failed attempts consume finite uses. Configuration changes invalidate grants. Never replenish a budget, reset state or repeatedly retry passwords as a workaround.
 
 ## Challenge handling
 
@@ -46,7 +46,7 @@ During human credential or MFA entry, do not observe the window. If explicitly a
 - `human_required` is a pause, not failure or proof of login. Human confirmation also is not authentication proof.
 - Failure, expiry, cancellation or adapter mismatch requires diagnosing that specific cause. Do not infer a wrong password from a blocked route or network error.
 
-Real CloudCone login was verified on 2026-09-30 with external AI assistance for one image CAPTCHA. The `/cloud` landing page and logout/billing markers were observed. The subsequent redirect-transport fix passed local tests but was not retried against the real account. Live provider inventory extraction remains unverified; a real manage route is not covered by the current overview selector. Consult current code/docs before assuming these limits have changed.
+Real CloudCone login was verified on 2026-09-30 with external AI assistance for one image CAPTCHA. The `/cloud` landing page and logout/billing markers were observed. The subsequent redirect-transport fix passed local tests but was not retried against the real account. Exact `/vps/NUMBER/manage` read scope is supported; the live field layout and provider inventory extraction remain unverified. Consult current code/docs before assuming these limits have changed.
 
 ## Carry knowledge across chats
 

@@ -11,27 +11,37 @@ import (
 
 const CloudConeOrigin = "https://app.cloudcone.com"
 
-var instancePath = regexp.MustCompile(`^/(compute|vps)/[0-9]+$`)
+var instancePath = regexp.MustCompile(`^/(?:compute/[0-9]+|vps/[0-9]+(?:/manage)?)$`)
+
+const loginInterval = time.Minute
 
 type WebAccount struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Origin    string `json:"origin"`
-	Username  string `json:"username,omitempty"`
-	Password  string `json:"password,omitempty"`
-	Enabled   bool   `json:"enabled"`
-	SecretSet bool   `json:"secret_set,omitempty"`
+	ID               string     `json:"id"`
+	Name             string     `json:"name"`
+	Origin           string     `json:"origin"`
+	Username         string     `json:"username,omitempty"`
+	Password         string     `json:"password,omitempty"`
+	Enabled          bool       `json:"enabled"`
+	SecretSet        bool       `json:"secret_set,omitempty"`
+	NextLoginAt      *time.Time `json:"next_login_at,omitempty"`
+	LoginNeedsReview bool       `json:"login_needs_review"`
 }
 type LoginGrant struct {
-	ID        string     `json:"id"`
-	AccountID string     `json:"account_id"`
-	AgentID   string     `json:"agent_id"`
-	Origin    string     `json:"origin"`
-	ReadPath  string     `json:"read_path,omitempty"`
-	ExpiresAt *time.Time `json:"expires_at"`
-	Revision  int        `json:"revision"`
-	Remaining int        `json:"remaining"`
-	Revoked   bool       `json:"revoked"`
+	ID            string     `json:"id"`
+	AccountID     string     `json:"account_id"`
+	AgentID       string     `json:"agent_id"`
+	Origin        string     `json:"origin"`
+	ReadPath      string     `json:"read_path,omitempty"`
+	ExpiresAt     *time.Time `json:"expires_at"`
+	Revision      int        `json:"revision"`
+	Remaining     int        `json:"remaining"`
+	UnlimitedUses bool       `json:"unlimited_uses"`
+	Revoked       bool       `json:"revoked"`
+}
+type LoginGrantView struct {
+	LoginGrant
+	NextLoginAt      *time.Time `json:"next_login_at,omitempty"`
+	LoginNeedsReview bool       `json:"login_needs_review"`
 }
 type LoginRun struct {
 	ID            string            `json:"id"`
@@ -94,7 +104,10 @@ func (e *Engine) PutWebAccount(a WebAccount) (WebAccount, error) {
 	}
 	err := e.mutate("web_account.updated", a.ID, func() error {
 		old := e.account(a.ID)
+		// These controls belong to the executor, never to account form input.
+		a.NextLoginAt, a.LoginNeedsReview = nil, false
 		if old != nil {
+			a.NextLoginAt, a.LoginNeedsReview = old.NextLoginAt, old.LoginNeedsReview
 			if a.Username == "" {
 				a.Username = old.Username
 			}
@@ -130,6 +143,9 @@ func (e *Engine) DeleteWebAccount(id string) error {
 	})
 }
 func (e *Engine) CreateLoginGrant(account, actor, path string, seconds, uses int) (LoginGrant, error) {
+	return e.CreateLoginGrantWithLimit(account, actor, path, seconds, uses, false)
+}
+func (e *Engine) CreateLoginGrantWithLimit(account, actor, path string, seconds, uses int, unlimited bool) (LoginGrant, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.expire()
@@ -137,8 +153,9 @@ func (e *Engine) CreateLoginGrant(account, actor, path string, seconds, uses int
 	if e.loginRunner == nil {
 		return LoginGrant{}, errors.New("controlled browser worker is not configured")
 	}
-	if a == nil || !a.Enabled || agent == nil || !agent.Enabled || (seconds != 0 && (seconds < 30 || seconds > 86400)) || uses < 1 || uses > 20 || (path != "" && !instancePath.MatchString(path)) {
-		return LoginGrant{}, errors.New("select an enabled account and agent, 0 (no expiry) or 30–86400 seconds, 1–20 uses, and an optional exact instance overview path")
+	validUses := (!unlimited && uses >= 1 && uses <= 20) || (unlimited && uses == 0)
+	if a == nil || !a.Enabled || agent == nil || !agent.Enabled || (seconds != 0 && (seconds < 30 || seconds > 86400)) || !validUses || (path != "" && !instancePath.MatchString(path)) {
+		return LoginGrant{}, errors.New("select an enabled account and agent, 0 (no expiry) or 30–86400 seconds, 1–20 uses or explicit unlimited_uses with uses=0, and an optional exact instance overview path")
 	}
 	if len(e.state.LoginGrants) >= 128 {
 		for id, g := range e.state.LoginGrants {
@@ -150,7 +167,7 @@ func (e *Engine) CreateLoginGrant(account, actor, path string, seconds, uses int
 			return LoginGrant{}, errors.New("grant limit reached")
 		}
 	}
-	g := LoginGrant{ID: newID("login_grant"), AccountID: a.ID, AgentID: actor, Origin: a.Origin, ReadPath: path, Revision: e.state.Revision, Remaining: uses}
+	g := LoginGrant{ID: newID("login_grant"), AccountID: a.ID, AgentID: actor, Origin: a.Origin, ReadPath: path, Revision: e.state.Revision, Remaining: uses, UnlimitedUses: unlimited}
 	if seconds > 0 {
 		expiry := e.now().UTC().Add(time.Duration(seconds) * time.Second)
 		g.ExpiresAt = &expiry
@@ -187,14 +204,21 @@ func (e *Engine) RevokeLoginGrant(id string) error {
 	e.revokeLoginLocked(g)
 	return nil
 }
-func (e *Engine) LoginGrants(actor string) []LoginGrant {
+func (e *Engine) loginGrantView(g LoginGrant) LoginGrantView {
+	v := LoginGrantView{LoginGrant: g}
+	if a := e.account(g.AccountID); a != nil {
+		v.NextLoginAt, v.LoginNeedsReview = a.NextLoginAt, a.LoginNeedsReview
+	}
+	return clone(v)
+}
+func (e *Engine) LoginGrants(actor string) []LoginGrantView {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.expire()
-	out := []LoginGrant{}
+	out := []LoginGrantView{}
 	for _, g := range e.state.LoginGrants {
 		if g.AgentID == actor {
-			out = append(out, *g)
+			out = append(out, e.loginGrantView(*g))
 		}
 	}
 	return out
@@ -204,7 +228,7 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 	defer e.mu.Unlock()
 	e.expire()
 	g := e.state.LoginGrants[grant]
-	if g == nil || g.AgentID != actor || g.Revision != e.state.Revision || g.Revoked || g.Remaining < 1 || g.expired(e.now()) {
+	if g == nil || g.AgentID != actor || g.Revision != e.state.Revision || g.Revoked || (!g.UnlimitedUses && g.Remaining < 1) || g.expired(e.now()) {
 		return LoginRun{}, errors.New("active login grant not found")
 	}
 	a, agent := e.account(g.AccountID), e.agent(actor)
@@ -213,6 +237,12 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 	}
 	if e.loginBusy || e.loginClosed {
 		return LoginRun{}, errors.New("a controlled browser is already active")
+	}
+	if a.LoginNeedsReview {
+		return LoginRun{}, errors.New("account login paused after an unsuccessful or interrupted run; operator review required")
+	}
+	if a.NextLoginAt != nil && e.now().Before(*a.NextLoginAt) {
+		return LoginRun{}, errors.New("account login rate limit: wait until next_login_at")
 	}
 	if len(e.loginRuns) >= 128 {
 		var oldest *LoginRun
@@ -232,9 +262,15 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 		deadline = *g.ExpiresAt
 	}
 	r := &LoginRun{ID: newID("login"), GrantID: g.ID, AgentID: actor, AccountID: a.ID, Origin: g.Origin, ReadPath: g.ReadPath, Status: "executing", CreatedAt: now, ExpiresAt: deadline, resume: make(chan struct{}, 1)}
-	g.Remaining--
-	if err := e.record("login.started", actor, r.ID, "Grant use consumed before controlled login"); err != nil {
-		g.Remaining++
+	previousRemaining, previousNext, previousReview := g.Remaining, a.NextLoginAt, a.LoginNeedsReview
+	if !g.UnlimitedUses {
+		g.Remaining--
+	}
+	next := now.Add(loginInterval)
+	// Persist before launch: even a crash cannot reset the throttle or retry a failed login.
+	a.NextLoginAt, a.LoginNeedsReview = &next, true
+	if err := e.record("login.started", actor, r.ID, "Login reservation and account retry guard persisted"); err != nil {
+		g.Remaining, a.NextLoginAt, a.LoginNeedsReview = previousRemaining, previousNext, previousReview
 		return LoginRun{}, err
 	}
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
@@ -246,6 +282,25 @@ func (e *Engine) StartLogin(actor, grant string) (LoginRun, error) {
 	e.loginWG.Add(1)
 	go e.performLogin(ctx, r.ID, input, runner, r.resume)
 	return clone(*r), nil
+}
+
+// Only the operator may acknowledge a failed/interrupted login. The cooldown remains.
+func (e *Engine) ReviewAccountLogin(id string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	a := e.account(id)
+	if a == nil || !a.LoginNeedsReview {
+		return errors.New("account is not waiting for login review")
+	}
+	if e.loginBusy {
+		return errors.New("wait for the controlled browser to close")
+	}
+	a.LoginNeedsReview = false
+	if err := e.record("login.reviewed", "operator", id, "Operator cleared account login pause; cooldown retained"); err != nil {
+		a.LoginNeedsReview = true
+		return err
+	}
+	return nil
 }
 
 var fieldFormats = map[string]*regexp.Regexp{
@@ -296,7 +351,14 @@ func (e *Engine) performLogin(ctx context.Context, id string, in LoginInput, run
 		if !safeLoginEvent(ev, in) {
 			return errors.New("invalid worker event")
 		}
+		a := e.account(r.AccountID)
+		if ev.Status == "completed" && a != nil {
+			a.LoginNeedsReview = false
+		}
 		if err := e.record("login."+ev.Status, r.AgentID, id, "Controlled browser status changed"); err != nil {
+			if ev.Status == "completed" && a != nil {
+				a.LoginNeedsReview = true
+			}
 			return err
 		}
 		r.Status = ev.Status
@@ -372,13 +434,13 @@ func (e *Engine) CloseLogins() {
 func (e *Engine) loginSnapshot(s *Snapshot) {
 	s.LoginWorkerReady = e.loginRunner != nil
 	s.WebAccounts = []WebAccount{}
-	s.LoginGrants = []LoginGrant{}
+	s.LoginGrants = []LoginGrantView{}
 	s.LoginRuns = []LoginRun{}
 	for _, a := range e.state.WebAccounts {
 		s.WebAccounts = append(s.WebAccounts, publicAccount(a))
 	}
 	for _, g := range e.state.LoginGrants {
-		s.LoginGrants = append(s.LoginGrants, *g)
+		s.LoginGrants = append(s.LoginGrants, e.loginGrantView(*g))
 	}
 	for _, r := range e.loginRuns {
 		s.LoginRuns = append(s.LoginRuns, clone(*r))

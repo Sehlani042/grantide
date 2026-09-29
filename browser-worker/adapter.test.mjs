@@ -52,6 +52,16 @@ test('false human confirmation does not prove login',async t=>{
  assert.equal(result.status,'login_failed');assert.equal(f.posts(),0);
 });
 
+test('only the exact approved VPS manage page can be read',async t=>{
+ const path='/vps/12345/manage';
+ assert.equal(allowedRequest(origin+path,'GET','read',path),true);
+ for(const [url,method,phase] of [[origin+path,'GET','login'],[origin+'/vps/999/manage','GET','read'],[origin+path+'/reboot','GET','read'],[origin+path+'?delete=1','GET','read'],[origin+path,'POST','read']])assert.equal(allowedRequest(url,method,phase,path),false);
+ const f=await fixture(t);
+ const result=await loginWorkflow(f.context,{...input,read_path:path},{human:async()=>assert.fail('unexpected challenge')});
+ assert.equal(result.status,'completed');
+ assert.deepEqual(result.fields,{cpu:'2 cores',memory:'2 GB'});
+});
+
 test('real HTTP transport blocks redirects before any second-hop request',async t=>{
  const received=[];
  const server=createServer(async(req,res)=>{

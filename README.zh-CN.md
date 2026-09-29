@@ -80,4 +80,6 @@ Codex 可通过 `grantide credential` 发起申请，你在“凭证申请”页
 
 `grantide web-login` 使用保存在允界的账号和指定 Agent 的授权，由受控 Chromium 填写凭据。CloudCone 真实登录已验证成功，其中一次图片验证码由外部 AI 在用户授权后操作完成；允界尚未内置验证码自动识别。真实资产提取及后续传输修复仍需实际账号验证。流程结束会关闭浏览器，其他对话不会继承会话。
 
+登录授权支持分别选择“无限期”和“无限次数”，随时可撤销。同一账号启动间隔至少 60 秒，单次最多 10 分钟；失败或中断后暂停，由操作者解除。旧的次数已耗尽授权不会自动升级。
+
 其他对话可阅读 [grantide-login Skill](skills/grantide-login/SKILL.md) 接入。将仓库的 `skills/grantide-login` 目录链接到本机 Codex skills 目录，即可作为复用入口；已有对话若未刷新技能目录，可直接读取该文件。[操作契约](docs/CONTROLLED-LOGIN.md)和[开发经验及验证边界](docs/LOGIN-LESSONS.md)分别记录调用方法与证据。

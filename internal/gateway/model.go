@@ -122,7 +122,7 @@ type CredentialRequest struct {
 
 type Snapshot struct {
 	WebAccounts        []WebAccount        `json:"web_accounts"`
-	LoginGrants        []LoginGrant        `json:"login_grants"`
+	LoginGrants        []LoginGrantView    `json:"login_grants"`
 	LoginRuns          []LoginRun          `json:"login_runs"`
 	LoginWorkerReady   bool                `json:"login_worker_ready"`
 	BrowserSites       []BrowserSite       `json:"browser_sites"`

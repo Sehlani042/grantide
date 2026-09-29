@@ -1,5 +1,5 @@
 export const origin = 'https://app.cloudcone.com';
-export const overviewPath = /^\/(compute|vps)\/[0-9]+$/;
+export const overviewPath = /^\/(?:compute\/[0-9]+|vps\/[0-9]+(?:\/manage)?)$/;
 export function allowedRequest(raw, method, phase, readPath, resourceType = 'document') {
   let u; try { u = new URL(raw); } catch { return false; }
   if (u.origin !== origin || u.username || u.password || u.hash || /[%\\]/.test(u.pathname)) return false;

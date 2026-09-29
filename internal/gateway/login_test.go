@@ -229,7 +229,7 @@ func TestControlledLoginHTTPBoundaries(t *testing.T) {
 		b, _ := io.ReadAll(res.Body)
 		return res.StatusCode, string(b)
 	}
-	for _, path := range []string{"/admin/web-accounts", "/admin/login-grants", "/admin/logins/x/resume"} {
+	for _, path := range []string{"/admin/web-accounts", "/admin/web-accounts/" + a.ID + "/review-login", "/admin/login-grants", "/admin/logins/x/resume"} {
 		if status, _ := request("POST", path, f.token, `{}`); status != 401 {
 			t.Fatal("agent admin access")
 		}
@@ -256,6 +256,210 @@ func TestControlledLoginHTTPBoundaries(t *testing.T) {
 		t.Fatal("delete failed")
 	}
 	awaitLogin(t, f, r.ID, "cancelled")
+}
+
+func waitLoginWorker(t *testing.T, e *Engine) {
+	t.Helper()
+	e.loginWG.Wait()
+}
+
+func TestUnlimitedLoginExplicitOptInAndLegacyBudget(t *testing.T) {
+	f, a, old := loginFixture(t, func(ctx context.Context, in LoginInput, emit func(LoginEvent) error, resume <-chan struct{}) error {
+		return emit(LoginEvent{Status: "completed", Authenticated: true})
+	})
+	for _, tc := range []struct {
+		uses      int
+		unlimited bool
+	}{{0, false}, {-1, true}, {1, true}, {21, false}} {
+		if _, err := f.e.CreateLoginGrantWithLimit(a.ID, f.actor, "", 0, tc.uses, tc.unlimited); err == nil {
+			t.Fatal("ambiguous use limit accepted", tc)
+		}
+	}
+	g, err := f.e.CreateLoginGrantWithLimit(a.ID, f.actor, "/vps/12345/manage", 0, 0, true)
+	if err != nil || !g.UnlimitedUses || g.ExpiresAt != nil {
+		t.Fatal("explicit unlimited rejected", err)
+	}
+	if _, err = f.e.StartLogin("other", g.ID); err == nil {
+		t.Fatal("cross-agent unlimited grant")
+	}
+	if f.e.state.LoginGrants[old.ID].UnlimitedUses {
+		t.Fatal("legacy grant upgraded")
+	}
+	f.e.state.LoginGrants[old.ID].Remaining = 0
+	if _, err = f.e.StartLogin(f.actor, old.ID); err == nil {
+		t.Fatal("exhausted grant upgraded")
+	}
+	for _, path := range []string{"/vps/12345/manage/reboot", "/vps/12345/manage?delete=1", "/compute/12345/manage"} {
+		if _, err = f.e.CreateLoginGrantWithLimit(a.ID, f.actor, path, 0, 0, true); err == nil {
+			t.Fatal("overbroad manage scope", path)
+		}
+	}
+}
+
+func TestUnlimitedLoginThrottlePersistenceAndRevocation(t *testing.T) {
+	runner := func(ctx context.Context, in LoginInput, emit func(LoginEvent) error, resume <-chan struct{}) error {
+		return emit(LoginEvent{Status: "completed", Authenticated: true})
+	}
+	f, a, _ := loginFixture(t, runner)
+	g, err := f.e.CreateLoginGrantWithLimit(a.ID, f.actor, "/vps/12345/manage", 0, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 3; i++ {
+		r, err := f.e.StartLogin(f.actor, g.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.ExpiresAt.Sub(r.CreatedAt) != 10*time.Minute {
+			t.Fatal("unbounded run")
+		}
+		waitLoginWorker(t, f.e)
+		if r, _ := f.e.GetLogin(f.actor, r.ID); r.Status != "completed" {
+			t.Fatal(r.Status)
+		}
+		if _, err = f.e.StartLogin(f.actor, g.ID); err == nil {
+			t.Fatal("cooldown bypass")
+		}
+		other, err := f.e.CreateLoginGrant(a.ID, f.actor, "", 0, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = f.e.StartLogin(f.actor, other.ID); err == nil {
+			t.Fatal("second grant bypassed account cooldown")
+		}
+		f.e.CloseLogins()
+		restored, err := NewEngine(f.e.store, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.e = restored
+		restored.SetLoginRunner(runner)
+		t.Cleanup(restored.CloseLogins)
+		if !restored.state.LoginGrants[g.ID].UnlimitedUses || restored.state.LoginGrants[g.ID].Remaining != 0 {
+			t.Fatal("unlimited changed across restart")
+		}
+		if restored.account(a.ID).LoginNeedsReview {
+			t.Fatal("successful login left paused")
+		}
+		if _, err = restored.StartLogin(f.actor, g.ID); err == nil {
+			t.Fatal("restart cleared cooldown")
+		}
+		next := *restored.account(a.ID).NextLoginAt
+		restored.now = func() time.Time { return next.Add(time.Second) }
+	}
+	if err = f.e.RevokeLoginGrant(g.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.e.StartLogin(f.actor, g.ID); err == nil {
+		t.Fatal("revoked unlimited grant accepted")
+	}
+}
+
+func TestLoginFailureAndCrashPauseSurviveRestart(t *testing.T) {
+	for _, status := range []string{"login_failed", "adapter_mismatch", "network_error", "crash"} {
+		t.Run(status, func(t *testing.T) {
+			runner := func(ctx context.Context, in LoginInput, emit func(LoginEvent) error, resume <-chan struct{}) error {
+				if status == "crash" {
+					return errors.New("fake worker failure")
+				}
+				return emit(LoginEvent{Status: status})
+			}
+			f, a, _ := loginFixture(t, runner)
+			g, err := f.e.CreateLoginGrantWithLimit(a.ID, f.actor, "", 0, 0, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = f.e.StartLogin(f.actor, g.ID); err != nil {
+				t.Fatal(err)
+			}
+			waitLoginWorker(t, f.e)
+			f.e.CloseLogins()
+			restored, err := NewEngine(f.e.store, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.e = restored
+			restored.SetLoginRunner(runner)
+			t.Cleanup(restored.CloseLogins)
+			next := *restored.account(a.ID).NextLoginAt
+			restored.now = func() time.Time { return next.Add(time.Second) }
+			if _, err = restored.StartLogin(f.actor, g.ID); err == nil {
+				t.Fatal("failed login retried after restart")
+			}
+			// Account edits cannot clear execution-owned pause state.
+			if _, err = restored.PutWebAccount(WebAccount{ID: a.ID, Name: "Renamed fake", Origin: CloudConeOrigin, Enabled: true}); err != nil {
+				t.Fatal(err)
+			}
+			if !restored.account(a.ID).LoginNeedsReview {
+				t.Fatal("account edit cleared pause")
+			}
+			dir := restored.store.dir
+			restored.store.dir = filepath.Join(t.TempDir(), "missing")
+			if err = restored.ReviewAccountLogin(a.ID); err == nil || !restored.account(a.ID).LoginNeedsReview {
+				t.Fatal("failed review save opened account")
+			}
+			restored.store.dir = dir
+			if err = restored.ReviewAccountLogin(a.ID); err != nil {
+				t.Fatal(err)
+			}
+			if !restored.account(a.ID).NextLoginAt.Equal(next) {
+				t.Fatal("review reset cooldown")
+			}
+		})
+	}
+}
+
+func TestUnlimitedLoginReservationRollbackAndConcurrentRevoke(t *testing.T) {
+	f, a, _ := loginFixture(t, func(ctx context.Context, in LoginInput, emit func(LoginEvent) error, resume <-chan struct{}) error {
+		<-ctx.Done()
+		return ctx.Err()
+	})
+	g, err := f.e.CreateLoginGrantWithLimit(a.ID, f.actor, "", 0, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := f.e.store.dir
+	f.e.store.dir = filepath.Join(t.TempDir(), "missing")
+	if _, err = f.e.StartLogin(f.actor, g.ID); err == nil {
+		t.Fatal("dispatch without persisted guard")
+	}
+	if f.e.account(a.ID).LoginNeedsReview || f.e.account(a.ID).NextLoginAt != nil {
+		t.Fatal("failed dispatch guard not rolled back")
+	}
+	f.e.store.dir = dir
+	var winners atomic.Int32
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := f.e.StartLogin(f.actor, g.ID); err == nil {
+				winners.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+	if winners.Load() != 1 {
+		t.Fatal("concurrent unlimited starts", winners.Load())
+	}
+	if err = f.e.ReviewAccountLogin(a.ID); err == nil {
+		t.Fatal("review allowed while browser active")
+	}
+	if err = f.e.RevokeLoginGrant(g.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitLoginWorker(t, f.e)
+	if !f.e.account(a.ID).LoginNeedsReview {
+		t.Fatal("interrupted login not paused")
+	}
+	// Persisted reservation also blocks retry after process death before any completion event.
+	restored, err := NewEngine(f.e.store, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !restored.account(a.ID).LoginNeedsReview {
+		t.Fatal("restart lost interrupted guard")
+	}
 }
 
 func TestNoExpiryGrantSurvivesRestartWithBudgetAndRevocation(t *testing.T) {

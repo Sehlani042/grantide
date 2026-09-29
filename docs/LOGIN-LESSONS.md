@@ -28,7 +28,7 @@ Use real local HTTP endpoints and fake secrets to check that a second-hop destin
 | `/cloud` route supported | Narrow policy edit and fake-browser login tests | Not a new live login after the edit |
 | HTTP redirects blocked before second hop | Local HTTP tests for 301/302/303/307/308 with fake credentials | All 3xx denied; revised transport not retried with the real account |
 | Core authorization checks passed | Go race tests and vet in the implementation turn | Reading this record does not rerun tests |
-| Provider inventory complete | No evidence | No read scope or exported fields in the successful live run; live manage layout still needs adaptation |
+| Provider inventory complete | No evidence | No read scope or exported fields in the successful live run; exact manage route now allowed, live field layout still needs verification |
 
 ## Reuse entry point
 
