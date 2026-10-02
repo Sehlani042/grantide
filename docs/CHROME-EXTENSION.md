@@ -27,6 +27,8 @@ python3 scripts/install-native-host.py \
 
 The installer writes Chrome's per-user `com.grantide.login` native-host manifest and a private launcher in the selected data directory. Its allowlist contains only the supplied extension origin. To uninstall the bridge, remove that manifest and `grantide-native-host.sh`; remove the extension in Chrome. Saved Grantide accounts/grants remain.
 
+When Chrome runs with a custom `--user-data-dir`, also pass `--chrome-user-data-dir /absolute/persistent/chrome-profile` to the installer. This is the user-data root, not its `Default` subdirectory. Chrome looks for the user-level manifest in that root's `NativeMessagingHosts` directory; registering only the normal macOS/Linux directory does not pair the custom instance. Use a persistent profile without `--disable-extensions`; temporary automation profiles may disable extension loading and do not provide durable login sessions. Chromium's [native messaging directory implementation](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/chrome/common/chrome_paths.cc) was checked on 2026-10-02.
+
 ## Invoke
 
 Use the calling agent's normal token and applicable grant. The extension receives no operator token.
@@ -65,6 +67,8 @@ CAPTCHA/MFA stays on the website. This extension contains no CAPTCHA solver or O
 
 ## Evidence
 
-Local tests cover owner/budget isolation, one concurrent claim, operator-only HTTP access, cross-origin rejection, secret-free public metadata, cancellation/revocation/configuration invalidation/expiry, failure guards, native framing and restricted routes. Fake-page browser tests exercise DOM filling, tab reuse, challenge pause, exact overview navigation, filtered results and unidentified-session rejection. No real CloudCone extension login has yet been verified. Live inventory layout remains unverified.
+Local tests cover owner/budget isolation, one concurrent claim, operator-only HTTP access, cross-origin rejection, secret-free public metadata, cancellation/revocation/configuration invalidation/expiry, failure guards, native framing and restricted routes. Fake-page browser tests exercise DOM filling, tab reuse, challenge pause, exact overview navigation, filtered results and unidentified-session rejection.
+
+Real CloudCone extension login was verified on 2026-10-02. Chrome displayed the enabled extension, its paired popup connected, and an agent login-only grant claimed/fill-dispatched the saved credentials. External AppleScript assistance submitted the visible image CAPTCHA with the user's current-action authorization. The agent API returned `completed`, `authenticated: true`, and `transport: "extension"`; the Chrome session remained available. A separately authorized UI navigation then opened the selected LA1 manage page. No structured inventory fields were requested/exported by this run, so the live extractor remains unverified. The initial confirmation wait expired without a login submission; its guard was reviewed before the replacement run. This adds no built-in CAPTCHA solver or automatic session identity matching.
 
 Chrome primary references checked 2026-09-30: [Native Messaging](https://developer.chrome.com/docs/extensions/develop/concepts/native-messaging), [Scripting](https://developer.chrome.com/docs/extensions/reference/api/scripting), [Tabs/host permissions](https://developer.chrome.com/docs/extensions/reference/api/tabs), [Alarms](https://developer.chrome.com/docs/extensions/reference/api/alarms), [Permissions](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions).

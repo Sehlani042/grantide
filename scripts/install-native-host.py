@@ -12,6 +12,8 @@ p = argparse.ArgumentParser()
 p.add_argument('--extension-id', required=True)
 p.add_argument('--binary', type=pathlib.Path, required=True)
 p.add_argument('--data-dir', type=pathlib.Path, required=True)
+p.add_argument('--chrome-user-data-dir', type=pathlib.Path,
+               help='Chrome --user-data-dir root when using a dedicated profile')
 args = p.parse_args()
 if not re.fullmatch('[a-p]{32}', args.extension_id):
     p.error('extension ID must be 32 Chrome ID characters')
@@ -25,6 +27,11 @@ elif platform.system() == 'Linux':
     host_dir = pathlib.Path.home() / '.config/google-chrome/NativeMessagingHosts'
 else:
     p.error('this installer currently supports macOS and Linux Chrome')
+if args.chrome_user_data_dir is not None:
+    chrome_dir = args.chrome_user_data_dir.resolve(strict=True)
+    if not chrome_dir.is_dir():
+        p.error('Chrome user data directory must be a directory')
+    host_dir = chrome_dir / 'NativeMessagingHosts'
 host_dir.mkdir(parents=True, exist_ok=True)
 wrapper = data_dir / 'grantide-native-host.sh'
 wrapper.write_text('#!/bin/sh\n'
@@ -43,3 +50,4 @@ target = host_dir / 'com.grantide.login.json'
 target.write_text(json.dumps(manifest, indent=2) + '\n')
 target.chmod(0o600)
 print('Installed native host for this exact extension ID. Reload the extension in Chrome.')
+print('Native host manifest:', target)
