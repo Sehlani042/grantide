@@ -1,11 +1,34 @@
 ---
 name: grantide-login
-description: Use Grantide (允界) for saved-credential website login, account-label suggestions, scoped login grants and cross-chat login handoff. Applies when a task explicitly uses Grantide or an existing Grantide integration, including CloudCone provider verification. Other websites need their own reviewed adapter.
+description: Use Grantide (允界) to fill saved website credentials, reuse its paired Chrome session and open authorized management pages across Codex chats. Use for 允界登录, CloudCone/LA1 login and repeating a verified Grantide login workflow. Automatic website filling currently supports CloudCone; route other sites to adapter assessment or human login handoff.
 ---
 
 # Grantide login integration
 
 Reuse the controlled login component and its evidence across tasks. This skill conveys operating knowledge; it does not supply credentials, a grant, or a shared browser session.
+
+## Execute from another chat or workspace
+
+The installed local path is `/Users/sehlani/.codex/skills/grantide-login/SKILL.md`. Its symlink keeps references tied to the checkout, regardless of the calling workspace. Use this skill automatically when the task requests the existing Grantide login integration; the user need not paste a command tutorial.
+
+Use [scripts/invoke.py](scripts/invoke.py) to resolve only the calling chat's configured Agent connection and execute the CLI without printing the token:
+
+```sh
+python3 /absolute/skill/scripts/invoke.py --check
+python3 /absolute/skill/scripts/invoke.py web-login --list
+python3 /absolute/skill/scripts/invoke.py web-login --grant GRANT_REF --extension --wait 30s
+python3 /absolute/skill/scripts/invoke.py web-login --id RUN_REF --wait 30s
+```
+
+The helper uses configured environment credentials, or the exact `CODEX_THREAD_ID` entry in the private connection registry. For a missing binding, follow [chat connection setup](references/chat-connection.md): prepare the exact GUI step and obtain only the missing operator input. Never search backups or borrow another chat's token. This skill does not mint grants or intercept every login prompt.
+
+Prefer the paired extension for CloudCone when the requested outcome includes a retained management page. Keep the running service and installed persistent Chrome profile; routine login needs no rebuild, restart or reinstall. Inspect an existing session before creating a new run. If the account and target page can be verified through authorized browser tools, continue in that profile without repeating login. If account identity is unclear, do not credit it to the saved account: the current extension reports `ACCT` rather than verifying an unidentified session. Resolve this deliberately, without repeated login runs.
+
+After verified extension authentication, open the user's requested management page in the same Chrome profile through authorized browser UI and verify the actual page/account evidence. Grantide's login API has no arbitrary page-action command. Preserve the authenticated Chrome window; close only temporary diagnostic tabs. A logged-out IAB tab is a separate session and does not invalidate Chrome login. Dismiss an unrequested browser password-save prompt without saving.
+
+If native Chrome control fails, consult [browser recovery](references/browser-recovery.md). Alternative AppleScript control requires explicit user permission in the calling task; a different chat's prior permission is not transferable.
+
+For other websites, assess the observed domain/form/verification and existing adapters before promising automatic filling. The current adapter supports CloudCone only. Human login on another configured site uses `browser-login`; implementing another saved-password adapter is separate development work.
 
 ## Locate current truth
 
@@ -36,13 +59,13 @@ The manual handoff is not a substitute for a request to use saved credentials au
 
 ## Challenge handling
 
-The built-in worker pauses at `human_required`; it has no CAPTCHA-solving API. Follow the current tool's challenge rules. External AI browser assistance is possible only when the current user authorization and live tool rules permit that particular action. An old successful CAPTCHA attempt is not authorization for a new challenge.
+The built-in worker pauses at `human_required`; it has no CAPTCHA-solving API. Follow the current tool's challenge rules. The user prefers AI assistance on the first visible CAPTCHA; perform it when the current action is authorized. Standing preference does not replace action-time confirmation required by the tool. Do not ask again for the same confirmed action. External AI browser assistance is possible only when the current user authorization and live tool rules permit that particular action. An old successful CAPTCHA attempt is not authorization for a new challenge.
 
 During human credential or MFA entry, do not observe the window. If explicitly authorized to help with the visible challenge, use the identified worker window and limit observations/actions to what that step needs; do not query password field values, decrypt the store, export cookies or unlock arbitrary browser access. Resume uses the operator surface, then the worker independently verifies authentication. Do not ask the user to repeat a confirmation already provided for the current action.
 
 ## Interpret results precisely
 
-- `completed` with `authenticated: true` means that run verified a fresh session. The worker then closes the browser. General browser tools and other chats do not inherit that session.
+- `completed` with `authenticated: true` means that run verified authentication. With `transport: "extension"`, the session remains in the paired Chrome profile; with the controlled worker, its ephemeral browser closes. IAB and other browser profiles do not inherit the session.
 - Missing/empty `fields` means no inventory result. Login success alone does not complete server verification, billing review or the caller's broader task.
 - `human_required` is a pause, not failure or proof of login. Human confirmation also is not authentication proof.
 - Failure, expiry, cancellation or adapter mismatch requires diagnosing that specific cause. Do not infer a wrong password from a blocked route or network error.

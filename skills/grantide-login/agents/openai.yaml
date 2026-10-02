@@ -1,0 +1,6 @@
+interface:
+  display_name: "允界登录"
+  short_description: "通过允界填写保存的凭据，复用 Chrome 登录会话并验证目标管理页面"
+  default_prompt: "使用 $grantide-login 调用允界登录指定网站，并验证目标管理页面。"
+policy:
+  allow_implicit_invocation: true
