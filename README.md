@@ -8,6 +8,12 @@ A local permission gateway for AI agents, with a browser console for scoped poli
 
 ![Grantide console](docs/screenshots/console.png)
 
+## Codex login without copying tokens
+
+The included [grantide-login skill](skills/grantide-login/SKILL.md) discovers the local gateway, stores a separate chat identity and requests a website login. Select a saved account and click **Approve and connect**: the paired Chrome extension starts automatically. Optionally allow unlimited revocable use of that exact account/page with no expiry. Results remain available after the client stops waiting.
+
+Automatic filling currently supports CloudCone; CAPTCHA/MFA remains a website step. This does not provide SSH or arbitrary website actions. External API clients can still use the explicit Agent setup below.
+
 | Mode | Behavior |
 | --- | --- |
 | **Auto allow** | Execute calls within the configured agent, service, method and path scope. |

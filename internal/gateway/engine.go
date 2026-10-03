@@ -47,6 +47,12 @@ func NewEngine(store *Store, demo bool) (*Engine, error) {
 		}
 	}
 	e.loginRuns = map[string]*LoginRun{}
+	if e.state.ConnectionRequests == nil {
+		e.state.ConnectionRequests = map[string]*ConnectionRequest{}
+	}
+	for _, r := range e.state.ConnectionRequests {
+		e.connectionStateLocked(r)
+	}
 	e.executor = executeHTTP
 	if demo && len(state.Services) == 0 && len(state.Agents) == 0 && len(state.Rules) == 0 {
 		e.state.Agents = []Agent{{ID: "demo-agent", Name: "Sandbox agent", Enabled: true}}
@@ -559,6 +565,7 @@ func (e *Engine) Snapshot() Snapshot {
 	sort.Slice(s.Requests, func(i, j int) bool { return s.Requests[i].CreatedAt.After(s.Requests[j].CreatedAt) })
 	sort.Slice(s.Leases, func(i, j int) bool { return s.Leases[i].CreatedAt.After(s.Leases[j].CreatedAt) })
 	e.loginSnapshot(&s)
+	e.connectionSnapshot(&s)
 	return s
 }
 

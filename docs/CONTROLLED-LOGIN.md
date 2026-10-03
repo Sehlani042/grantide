@@ -1,5 +1,11 @@
 # Controlled website login (experimental v0.4)
 
+## Preferred Codex entry: automatic connection
+
+Use the included `skills/grantide-login/scripts/invoke.py login --url TARGET --wait 30`. It automatically holds a per-chat credential and submits the destination. The operator selects an account and clicks Approve and connect, which enrolls and dispatches in one operation. No manual token transfer or second execution command is needed. Reuse `login --id REQUEST --wait 30` to await the result; `login --status --wait 0` retrieves the latest owned request. See the [skill](../skills/grantide-login/SKILL.md) for the complete operational workflow and challenge/session limits.
+
+The lower-level grant APIs below remain supported for explicit integrations.
+
 This is the automatic-credential path: **operator saves a password in Grantide → operator issues an account-scoped grant → agent invokes the grant → the trusted worker fills the website → CAPTCHA/MFA if required → the worker verifies authentication and returns a bounded result**. `browser-login` is the older manual handoff and does not meet this requirement.
 
 ## Run locally

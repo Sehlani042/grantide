@@ -8,6 +8,12 @@
 
 ![允界控制台](docs/screenshots/console.png)
 
+## Codex 登录：无需复制 token
+
+安装 [grantide-login Skill](skills/grantide-login/SKILL.md) 后，对话会自动发现本机服务、保存独立身份并提交登录申请。你在允界选择账号，点 **同意并连接**，已配对的 Chrome 扩展便会执行。可选择对同一账号和页面无限次、无到期授权，并随时撤销。批准后的执行不依赖对话继续等待，结果可稍后读取。
+
+目前自动填写适配 CloudCone；验证码和 MFA 仍在网站处理。此流程不提供 SSH 或任意网站操作能力。外部 API 集成仍可使用下文的手动 Agent 配置。
+
 | 模式 | 实际行为 |
 | --- | --- |
 | 自动放行 | 在指定 Agent、服务、方法和路径范围内直接执行。 |

@@ -7,10 +7,11 @@ const MaxBody = 64 << 10
 const PendingTTL = 5 * time.Minute
 
 type Agent struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Enabled   bool   `json:"enabled"`
-	TokenHash string `json:"token_hash,omitempty"`
+	WebsiteOnly bool   `json:"website_only,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Enabled     bool   `json:"enabled"`
+	TokenHash   string `json:"token_hash,omitempty"`
 }
 
 type Service struct {
@@ -95,15 +96,16 @@ type Event struct {
 }
 
 type State struct {
-	LoginGrants  map[string]*LoginGrant `json:"login_grants,omitempty"`
-	WebAccounts  []WebAccount           `json:"web_accounts"`
-	BrowserSites []BrowserSite          `json:"browser_sites"`
-	Schema       int                    `json:"schema"`
-	Revision     int                    `json:"revision"`
-	Agents       []Agent                `json:"agents"`
-	Services     []Service              `json:"services"`
-	Rules        []Rule                 `json:"rules"`
-	Audit        []Event                `json:"audit"`
+	ConnectionRequests map[string]*ConnectionRequest `json:"connection_requests,omitempty"`
+	LoginGrants        map[string]*LoginGrant        `json:"login_grants,omitempty"`
+	WebAccounts        []WebAccount                  `json:"web_accounts"`
+	BrowserSites       []BrowserSite                 `json:"browser_sites"`
+	Schema             int                           `json:"schema"`
+	Revision           int                           `json:"revision"`
+	Agents             []Agent                       `json:"agents"`
+	Services           []Service                     `json:"services"`
+	Rules              []Rule                        `json:"rules"`
+	Audit              []Event                       `json:"audit"`
 }
 
 type CredentialRequest struct {
@@ -121,6 +123,7 @@ type CredentialRequest struct {
 }
 
 type Snapshot struct {
+	ConnectionRequests []ConnectionRequest `json:"connection_requests"`
 	WebAccounts        []WebAccount        `json:"web_accounts"`
 	LoginGrants        []LoginGrantView    `json:"login_grants"`
 	LoginRuns          []LoginRun          `json:"login_runs"`

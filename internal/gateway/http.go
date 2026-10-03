@@ -39,9 +39,14 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler,
 	if len(options) > 0 {
 		sessions = options[0]
 	}
+	// Cookies have no port scope. Isolate multiple local Grantide instances.
+	cookieName := operatorCookie + "_" + tokenHash(operatorToken)[:12]
 	cookieToken := func(r *http.Request) string {
-		c, err := r.Cookie(operatorCookie)
+		c, err := r.Cookie(cookieName)
 		if err != nil {
+			if legacy, e := r.Cookie(operatorCookie); e == nil && sessions.Authorized(legacy.Value) {
+				return legacy.Value
+			}
 			return ""
 		}
 		return c.Value
@@ -61,6 +66,10 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler,
 			actor := e.Authenticate(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
 			if actor == "" {
 				fail(w, 401, "Valid agent token required")
+				return
+			}
+			if e.websiteOnly(actor) && !(strings.HasPrefix(r.URL.Path, "/v1/logins") || r.URL.Path == "/v1/extension-logins" || r.URL.Path == "/v1/login-grants") {
+				fail(w, 403, "Website-only identity")
 				return
 			}
 			fn(w, r, actor)
@@ -93,7 +102,7 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler,
 				fail(w, status, err.Error())
 				return
 			}
-			cookie := &http.Cookie{Name: operatorCookie, Value: value, Path: "/admin", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil}
+			cookie := &http.Cookie{Name: cookieName, Value: value, Path: "/admin", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil}
 			if in.Remember {
 				cookie.MaxAge = 30 * 24 * 60 * 60
 				cookie.Expires = expiry
@@ -106,7 +115,7 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler,
 				fail(w, 500, "Could not end administrator session")
 				return
 			}
-			http.SetCookie(w, &http.Cookie{Name: operatorCookie, Value: "", Path: "/admin", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: -1, Expires: time.Unix(1, 0)})
+			http.SetCookie(w, &http.Cookie{Name: cookieName, Value: "", Path: "/admin", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: -1, Expires: time.Unix(1, 0)})
 			jsonResponse(w, 200, map[string]bool{"ok": true})
 		}))
 	}
@@ -352,6 +361,7 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler,
 		jsonResponse(w, 200, out)
 	}))
 	e.loginRoutes(mux, admin, agent)
+	e.connectionRoutes(mux, admin)
 	mux.Handle("GET /", assets)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")

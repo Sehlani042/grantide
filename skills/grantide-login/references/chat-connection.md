@@ -1,39 +1,11 @@
-# Calling-chat connection
+# Automatic local connection
 
-On Sehlani's machine the installed skill symlinks to `/Users/sehlani/开发/grantide/skills/grantide-login`. The persistent Chrome user-data root is `/Users/sehlani/开发/grantide/.local/chrome-profile`. Keep that running session; do not launch a temporary Chrome profile instead.
+Routine chats need no manual setup. `serve` writes nonsecret discovery metadata to `~/.config/grantide/local-service.json`: the port file, executable, and optional paired Chrome profile. `--discovery-file PATH` overrides this; an empty value disables registration for test instances. `--chrome-profile ROOT` records the existing profile and is retained across ordinary restarts. Registration contains no operator or Agent token.
 
-## Resolve the connection
+The helper resolves discovery, then an optional exact legacy entry from `~/.config/grantide/codex-connections.json`, then explicit `GRANTIDE_URL` / `GRANTIDE_AGENT_TOKEN_FILE` / `GRANTIDE_TOKEN` overrides. It never searches another chat entry. New identities are cryptographically random, written atomically to mode-0600 files in `~/.config/grantide/agent-tokens/`, with filenames derived from the conversation ID. The credential is sent only in a header to the validated loopback service; proxies and redirects are disabled.
 
-Run `scripts/invoke.py --check`. It accepts `GRANTIDE_URL` plus `GRANTIDE_TOKEN` or `GRANTIDE_AGENT_TOKEN_FILE`. Otherwise it selects only the current `CODEX_THREAD_ID` entry in `~/.config/grantide/codex-connections.json`. There is no fallback to another chat.
+`invoke.py --check` checks service reachability and private identity storage. It does **not** claim an approved grant or website authentication. `login --url TARGET` creates the pending request. Operator approval chooses the actual saved account and starts the fixed extension adapter. `login --id ID` or `login --status` returns only owned metadata and bounded results, never credentials.
 
-Private registry format:
+If discovery is missing, locate/start the installed Grantide service from its known project or installation location. Do not read operator.token to give a chat admin access. No requirement to manually copy a token remains. See the CLI's `serve --help` for registration options. Advanced explicit Agent configuration remains supported for external integrations.
 
-```json
-{
-  "threads": {
-    "CALLING_THREAD_ID": {
-      "token_file": "/absolute/private/this-agent.token",
-      "port_file": "/absolute/private/running-service/port",
-      "chrome_user_data_dir": "/absolute/persistent/chrome-profile"
-    }
-  }
-}
-```
-
-An explicit `url` can replace `port_file`. The port file lets the service restart on a different loopback port without changing instructions. Store only file references, never raw tokens/passwords. Keep the registry/token files private (0600, parent directory 0700) and outside Git.
-
-## Complete a missing binding
-
-1. Open the existing operator GUI using the configured loopback URL or explicitly identified running-service metadata. Do not start a second service with empty state or inspect private backups.
-2. In Connections, prepare an Agent for the calling chat. The operator creates its token, shown once, and configures it privately for this chat. Follow current tool confirmation requirements when creating new access. Never print the token or substitute the operator token.
-3. Once authorized, register the token-file reference under the actual calling `CODEX_THREAD_ID`, preserving other entries. Do not infer token ownership from a filename or silently alias another chat's connection.
-4. In Automatic login, reuse the saved account and issue an applicable grant to that Agent. Do not ask for the password again. No-expiry/unlimited uses are selected only when authorized. Configuration mutations can invalidate existing grants; inspect state before changing it.
-5. Run `--check` and `web-login --list`, then invoke the matching grant. If operator entry/selection is necessary, show that exact GUI step and ask for only the missing input. Do not leave the user to reconstruct a CLI tutorial.
-
-This registry is connection convenience, not authority or an OS sandbox. Grantide checks the token/grant owner. Cross-chat operating knowledge does not transfer another Agent's grant.
-
-## Operator GUI login
-
-The console supports a separately configured administrator password and a 30-day remembered browser session. Reuse an authenticated console tab first. A new tab in the same browser profile can use its existing cookie; another browser/profile signs in separately. Explicit logout revokes the remembered session. Do not mistake console authentication for a website password failure.
-
-The private native/API `operator.token` remains separate from the human console password and must never be placed in an Agent connection. New password setup uses the local stdin CLI while the service is stopped, only when the user requests that credential change. There is no shared/default console password in this skill.
+A request survives a CLI timeout. Pending approvals survive service restart subject to their revision and 15-minute expiry; active login runs become interrupted and require review before another attempt. Completed extension results are persisted encrypted and remain retrievable. Codex must still be running a wait/poll or resume later to consume those results; this protocol does not secretly send a new message to an ended chat.

@@ -29,3 +29,10 @@ The fake worker protocol process flushes its terminal stdout event before explic
 Verify salted password/hash-only session persistence and 0600 permissions; wrong-password rejection; five-failure throttle and recovery; remembered-session reload and expiry; logout and password-reset revocation; failed-save rollback; stopped-server setup; cookie attributes and session-only lifetime; Host/Origin protection; Agent/admin separation and retained native bearer authentication; secret-free decoder/JSON output.
 
 Live GUI verification on 2026-10-03: specified password signed in with Remember me selected; a fresh tab entered the console without token/password entry; service restart retained that session; logout returned to the password form; subsequent remembered login succeeded. Full browser-application restart was not performed. Private state/binary were backed up before upgrade; configuration revision, accounts, Agent metadata and grants were compared across upgrade.
+
+## Automatic local connection
+
+- `go test -race ./...`: pending default deny, foreign target rejection, exact proof ownership, idempotent pending request, duplicate/concurrent approval, failure rollback, dispatch on approval, unrelated grants retained, website-only HTTP isolation, scoped grant reuse, expiry, completion persistence and restart interruption.
+- `python3 -m unittest discover -s skills/grantide-login/scripts -p 'test_*.py'`: concurrent private identity publication, permissions, zero manual registry setup, exact chat selection and secret-free output using fake credentials/loopback upstream.
+- Visual fake-data check: new-chat request appears in Approvals; select fake account and Approve and connect changes it to extension_pending. Simulated trusted extension completion returns the fixed test field to the original CLI without another execution command.
+- Live provider verification is recorded separately in NOW.md; fake dispatch/completion is not proof of CloudCone authentication.

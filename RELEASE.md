@@ -17,3 +17,7 @@ Source includes an unpacked Chrome 120+ Manifest V3 adapter and a macOS/Linux na
 ## Operator password/session development increment
 
 Back up the private data directory and matching binary before upgrade. Additive `operator-auth.json` contains a salted password hash and hashed session records; it does not replace `operator.token`, encrypted provider state or Agent credentials. The local stdin password CLI runs with the server stopped. Downgrading loses cookie-login support; old native bearer integrations continue. Remembered cookies last 30 days; explicit logout revokes the browser session.
+
+## Automatic local chat connection development increment
+
+Back up encrypted state/binary before upgrade. Connection requests and completed extension metadata are additive encrypted state fields; new identities are website-only. Do not downgrade to a version that ignores that identity restriction. Pending approvals retain revision/expiry, active runs do not resume after service restart. `serve` now publishes nonsecret local discovery by default; use `--discovery-file ''` for isolated test services. The distributed archives include the Python 3 Skill/helper. No token copying is required for its CloudCone workflow. Per-instance cookie names prevent loopback test services from replacing remembered production console sessions. This release does not wake ended Codex conversations or add SSH/universal browser control.

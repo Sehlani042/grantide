@@ -64,6 +64,9 @@ func serve(args []string) error {
 	demo := f.Bool("demo", false, "seed fake demo services on empty state")
 	worker := f.String("browser-worker", "", "absolute path to the trusted browser worker entry.mjs")
 	node := f.String("browser-node", "", "absolute path to Node.js")
+	homeDir, _ := os.UserHomeDir()
+	discovery := f.String("discovery-file", filepath.Join(homeDir, ".config", "grantide", "local-service.json"), "nonsecret local client discovery; empty disables")
+	chromeProfile := f.String("chrome-profile", "", "paired Chrome user-data directory for local clients")
 	port := f.Int("port", 0, "loopback port; 0 remembers an available random port")
 	if err := f.Parse(args); err != nil {
 		return err
@@ -124,6 +127,11 @@ func serve(args []string) error {
 	actual := listener.Addr().(*net.TCPAddr).Port
 	if err := os.WriteFile(portFile, []byte(strconv.Itoa(actual)), 0600); err != nil {
 		return err
+	}
+	if *discovery != "" {
+		if err := writeDiscovery(*discovery, *dir, *chromeProfile); err != nil {
+			return err
+		}
 	}
 	address := "http://" + listener.Addr().String()
 	// Keep the operator token out of terminal logs and process arguments.

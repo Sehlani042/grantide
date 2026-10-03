@@ -218,3 +218,40 @@ func TestOperatorCookieHTTPBoundaries(t *testing.T) {
 		t.Fatal("decoder leaked login input")
 	}
 }
+
+func TestOperatorCookieNamesDoNotCollideAcrossLocalInstances(t *testing.T) {
+	f := setup(t, "approval")
+	var handlers []http.Handler
+	var cookies []*http.Cookie
+	for range 2 {
+		auth, err := OpenOperatorAuth(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		operator := randomToken()
+		h := Handler(f.e, operator, "localhost", http.NotFoundHandler(), auth)
+		body, _ := json.Marshal(map[string]any{"token": operator, "remember": true})
+		req := httptest.NewRequest("POST", "http://localhost/admin/login", bytes.NewReader(body))
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, req)
+		if out.Code != 200 {
+			t.Fatal(out.Code)
+		}
+		handlers = append(handlers, h)
+		cookies = append(cookies, out.Result().Cookies()[0])
+	}
+	if cookies[0].Name == cookies[1].Name {
+		t.Fatal("localhost cookies collide across ports")
+	}
+	for _, h := range handlers {
+		req := httptest.NewRequest("GET", "http://localhost/admin/state", nil)
+		for _, c := range cookies {
+			req.AddCookie(c)
+		}
+		out := httptest.NewRecorder()
+		h.ServeHTTP(out, req)
+		if out.Code != 200 {
+			t.Fatal("another instance evicted the session")
+		}
+	}
+}

@@ -20,6 +20,10 @@ jobs:
       - run: go vet ./...
       - run: go build ./cmd/grantide
       - run: node --check internal/webui/assets/app.js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s skills/grantide-login/scripts -p "test_*.py"
   browser-adapter:
     runs-on: ubuntu-latest
     steps:

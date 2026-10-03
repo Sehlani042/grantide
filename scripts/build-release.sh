@@ -13,6 +13,10 @@ for platform in darwin/arm64 darwin/amd64 linux/arm64 linux/amd64 windows/amd64;
   cp LICENSE README.md README.zh-CN.md SECURITY.md PRD.md DESIGN.md TEST.md RELEASE.md "$target_dir/"
   cp -R docs "$target_dir/"
   cp -R extension "$target_dir/"
+  python3 - "$target_dir" <<'PY_SKILL'
+import pathlib, shutil, sys
+shutil.copytree("skills", pathlib.Path(sys.argv[1])/"skills", dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
+PY_SKILL
   mkdir -p "$target_dir/scripts"
   cp scripts/install-native-host.py "$target_dir/scripts/"
   if [[ "$target_os" == windows ]]; then

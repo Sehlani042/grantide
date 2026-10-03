@@ -29,6 +29,10 @@ func (e *Engine) extensionBusyLocked() bool {
 func (e *Engine) StartExtensionLogin(actor, grant string) (LoginRun, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	return e.startExtensionLoginLocked(actor, grant, nil)
+}
+
+func (e *Engine) startExtensionLoginLocked(actor, grant string, connection *ConnectionRequest) (LoginRun, error) {
 	e.expire()
 	g := e.state.LoginGrants[grant]
 	if g == nil || g.AgentID != actor || g.Revision != e.state.Revision || g.Revoked || (!g.UnlimitedUses && g.Remaining < 1) || g.expired(e.now()) {
@@ -62,6 +66,9 @@ func (e *Engine) StartExtensionLogin(actor, grant string) (LoginRun, error) {
 		deadline = *g.ExpiresAt
 	}
 	r := &LoginRun{ID: newID("login"), GrantID: g.ID, AgentID: actor, AccountID: a.ID, Origin: g.Origin, ReadPath: g.ReadPath, Status: "extension_pending", Transport: "extension", CreatedAt: now, ExpiresAt: deadline}
+	if connection != nil {
+		connection.RunID = r.ID
+	}
 	previousRemaining, previousNext, previousReview := g.Remaining, a.NextLoginAt, a.LoginNeedsReview
 	if !g.UnlimitedUses {
 		g.Remaining--
@@ -140,7 +147,20 @@ func (e *Engine) CompleteExtensionLogin(id, status string, fields map[string]str
 	if status == "completed" {
 		a.LoginNeedsReview = false
 	}
+	beforeConnections := clone(e.state.ConnectionRequests)
+	for _, c := range e.state.ConnectionRequests {
+		if c.RunID == id {
+			result := clone(*r)
+			result.Status, result.Authenticated, result.Fields = status, ev.Authenticated, clone(fields)
+			if status == "completed" {
+				now := e.now().UTC()
+				result.VerifiedAt = &now
+			}
+			c.Status, c.Result = status, &result
+		}
+	}
 	if err := e.record("login."+status, "extension", id, "Trusted browser extension reported authentication status"); err != nil {
+		e.state.ConnectionRequests = beforeConnections
 		if status == "completed" {
 			a.LoginNeedsReview = true
 		}
