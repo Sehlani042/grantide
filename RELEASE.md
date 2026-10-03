@@ -13,3 +13,7 @@ Unlimited-use grants require the new explicit boolean and remain scoped/revocabl
 
 ## Chrome extension development increment
 Source includes an unpacked Chrome 120+ Manifest V3 adapter and a macOS/Linux native-host installer. It requires an updated Grantide binary; native-host pairing adds persistent Chrome access to CloudCone and the local bridge. Keep the extension source/binary paths stable and pair the exact ID. Back up the private directory before service upgrade. No Chrome Web Store publication, Windows installer, other-browser compatibility, or real extension login is claimed. See docs/CHROME-EXTENSION.md.
+
+## Operator password/session development increment
+
+Back up the private data directory and matching binary before upgrade. Additive `operator-auth.json` contains a salted password hash and hashed session records; it does not replace `operator.token`, encrypted provider state or Agent credentials. The local stdin password CLI runs with the server stopped. Downgrading loses cookie-login support; old native bearer integrations continue. Remembered cookies last 30 days; explicit logout revokes the browser session.

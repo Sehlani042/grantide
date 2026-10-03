@@ -54,3 +54,9 @@ Goal: execute a grant-scoped CloudCone login in the operator's ordinary Chrome p
 Acceptance: one-time operator-authenticated credential claim; no operator token in the extension; no credential in agent responses/audit/extension storage; fixed origin/form/read scope; shared durable retry guard; cancellation/revocation/expiry/configuration invalidation; validated results; native host restricted to an exact extension ID and three operations; fake-page and protocol verification; dated real-login evidence before provider-success claims. Initial distribution is unpacked Chrome 120+ with macOS/Linux native-host installation.
 
 The Chrome session remains in Chrome and is separate from Codex's in-app browser. This is not the isolated worker's network/session boundary. Existing authenticated pages cannot be credited to the saved account without an account-identity adapter, so this version waits for a login form. Store publication and other browsers/platforms require later validation.
+
+## Operator password and remembered login (2026-10-03)
+
+The operator can use a configurable human password to enter the local console, selecting remembered login for 30 days. A browser session cookie replaces manual repeated entry of the native/API operator token. Password setup happens through a local stdin CLI, never a tracked default. The native bridge retains its existing operator token and Agent credentials/grants remain unchanged.
+
+Acceptance: salted password hashing, no plaintext in tracked/runtime auth records, failed-login throttle, HttpOnly/SameSite cookie, persistent remembered sessions, session expiry and logout revocation, cross-origin rejection, Agent/admin separation, and GUI login/reopen verification. Password reconfiguration clears console sessions without mutating provider accounts or Agent grants.

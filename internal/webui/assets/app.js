@@ -4,11 +4,11 @@ let lang = localStorage.getItem('grantide-language') || (navigator.language.star
 const t = (zh, en) => lang === 'zh' ? zh : en;
 function readAccountSetupLabel() {const params=new URLSearchParams(location.hash.slice(1));return params.has('account-label')?(params.get('account-label')||'CloudCone').replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,100)||'CloudCone':null;}
 let accountSetupLabel = readAccountSetupLabel();
-let token = sessionStorage.getItem('grantide-operator') || '';
+let token = sessionStorage.getItem('grantide-operator') || '', sessionVersion=0, sessionActive=true;
 function useLoginFragment() {
   const fragment = new URLSearchParams(location.hash.slice(1));
   if(!fragment.has('token'))return false;
-  token=fragment.get('token');sessionStorage.setItem('grantide-operator',token);history.replaceState(null,'',location.pathname+location.search);return true;
+  token=fragment.get('token');sessionVersion++;sessionActive=true;sessionStorage.setItem('grantide-operator',token);history.replaceState(null,'',location.pathname+location.search);return true;
 }
 useLoginFragment();
 let state, page = (['browser','vault'].includes(new URLSearchParams(location.search).get('view'))?new URLSearchParams(location.search).get('view'):'overview'), busy = false, lastDemo = null, online = true, fingerprint = '';
@@ -34,22 +34,32 @@ const empty = (title,copy,action='') => `<div class="empty"><span class="empty-s
 const heading = (eyebrow,title,copy,action='') => `<div class="page-heading"><div><div class="eyebrow">${eyebrow}</div><h1>${title}</h1><p>${copy}</p></div>${action}</div>`;
 
 async function api(path, method='GET', data) {
-  const requestToken=token;
-  const r = await fetch(path, {method,headers:{Authorization:`Bearer ${requestToken}`,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
+  const requestToken=token, requestVersion=sessionVersion;
+  const r = await fetch(path, {method,credentials:'same-origin',headers:{...(requestToken?{Authorization:`Bearer ${requestToken}`} : {}),'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data)});
   const out = await r.json();
-  if(requestToken!==token)throw new Error('Session changed; old response discarded');
-  if (!r.ok) { if(r.status===401) {sessionStorage.removeItem('grantide-operator');token='';showLogin();} throw new Error(out.error || `HTTP ${r.status}`); }
+  if(requestToken!==token||requestVersion!==sessionVersion)throw new Error('Session changed; old response discarded');
+  if (!r.ok) { if(r.status===401) {sessionStorage.removeItem('grantide-operator');token='';sessionActive=false;sessionVersion++;state=null;showLogin();} throw new Error(out.error || `HTTP ${r.status}`); }
   return out;
 }
 let toastTimer;
 function notify(message,error=false) {const el=$('#toast');el.textContent=message;el.className=error?'error':'';el.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.hidden=true,5000);}
 function showLogin(error='') {
   $('#app').hidden=true;$('#login').hidden=false;
-  $('#login').innerHTML=`<div class="login-card"><img src="/mark.svg" alt="Grantide"><div class="eyebrow">GRANTIDE / 允界</div><h1>${t('为自主行动，划清边界。','Autonomy, within your boundaries.')}</h1><p>${t('输入本机的 Operator token，进入权限控制台。','Enter your local operator token to open the access console.')}</p><form id="login-form"><label>${t('管理员凭证','Operator token')}<input name="token" type="password" autocomplete="off" required minlength="64" maxlength="64" placeholder="operator.token"></label><p class="form-error">${esc(error)}</p><button class="button primary" type="submit">${t('进入控制台','Open console')} <span>→</span></button></form><small>${t('启动程序后，打开私有目录里的 operator-url，或复制 operator.token 的内容。','After starting the server, open the link in your private operator-url file, or copy the contents of operator.token.')}</small></div>`;
-  $('#login-form').addEventListener('submit',async ev=>{ev.preventDefault();token=new FormData(ev.target).get('token').trim();sessionStorage.setItem('grantide-operator',token);try {await refresh(true);}catch(e){showLogin(e.message);}});
+  const message=error==='Invalid administrator password'?t('管理员密码不正确。','Incorrect administrator password.'):error==='Too many login attempts; try again in one minute'?t('尝试次数过多，请一分钟后再试。','Too many attempts. Try again in one minute.'):error==='Operator authentication required'?t('请登录允界控制台。','Please sign in to Grantide.'):error;
+  $('#login').innerHTML=`<div class="login-card"><img src="/mark.svg" alt="Grantide"><div class="eyebrow">GRANTIDE / 允界</div><h1>${t('为自主行动，划清边界。','Autonomy, within your boundaries.')}</h1><p>${t('输入管理员密码，进入权限控制台。','Enter your administrator password to open the console.')}</p><form id="login-form"><label>${t('管理员密码','Administrator password')}<input name="password" type="password" autocomplete="current-password" required maxlength="256" placeholder="${t('输入管理员密码','Administrator password')}"></label><label class="check-label"><input name="remember" type="checkbox">${t('记住登录 · 30 天','Remember me · 30 days')}</label><p class="form-error">${esc(message)}</p><button class="button primary" type="submit">${t('进入控制台','Open console')} <span>→</span></button></form><small>${t('记住登录后，重开页面无需重复输入。退出登录会清除本浏览器的登录授权。','Remembered sessions survive reopening. Signing out revokes this browser session.')}</small></div>`;
+  $('#login-form').addEventListener('submit',async ev=>{
+    ev.preventDefault();const form=ev.target, data=new FormData(form), value=data.get('password'), remember=data.get('remember')==='on';
+    form.querySelector('button').disabled=true;
+    try {
+      const payload=/^[a-f0-9]{64}$/.test(value)?{token:value,remember}:{password:value,remember};
+      const r=await fetch('/admin/login',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      const result=await r.json();if(!r.ok)throw new Error(result.error||`HTTP ${r.status}`);
+      form.reset();sessionStorage.removeItem('grantide-operator');token='';sessionActive=true;sessionVersion++;fingerprint='';await refresh(true);
+    } catch(e){showLogin(e.message);}
+  });
 }
 async function refresh(force=false) {
-  if (!token || (busy&&!force)) return;
+  if ((!sessionActive&&!force) || (busy&&!force)) return;
   try {
     const next=await api('/admin/state');
     const key=JSON.stringify({...next,server_time:''})+(next.login_grants||[]).map(g=>!g.expires_at||new Date(g.expires_at)>new Date(next.server_time)).join()+next.leases.map(l=>!l.revoked&&l.remaining>0&&new Date(l.expires_at)>new Date(next.server_time)).join()+next.rules.map(r=>r.enabled&&(!r.expires_at||new Date(r.expires_at)>new Date(next.server_time))).join();
@@ -227,9 +237,9 @@ document.addEventListener('click',async ev=>{
   }catch(e){notify(e.message,true);}finally{busy=false;el.disabled=false;}
 });
 $('#language').addEventListener('click',()=>{lang=lang==='zh'?'en':'zh';localStorage.setItem('grantide-language',lang);if(state)render();});
-$('#logout').addEventListener('click',()=>{sessionStorage.removeItem('grantide-operator');token='';state=null;modal.close();showLogin();});
+$('#logout').addEventListener('click',async()=>{try{await api('/admin/logout','POST',{});sessionStorage.removeItem('grantide-operator');token='';sessionActive=false;sessionVersion++;state=null;fingerprint='';modal.close();showLogin();}catch(e){notify(e.message,true);}});
 modal.addEventListener('close',()=>{$('#modal-content').replaceChildren();});
 modal.addEventListener('click',ev=>{if(ev.target===modal)modal.close();});
 window.addEventListener('hashchange',()=>{accountSetupLabel=readAccountSetupLabel();if(useLoginFragment()||accountSetupLabel!==null)refresh(true).catch(e=>showLogin(e.message));});
-if(token)refresh(true).catch(e=>showLogin(e.message));else showLogin();
+refresh(true).catch(e=>showLogin(e.message));
 setInterval(()=>refresh(),2000);

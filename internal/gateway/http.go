@@ -3,9 +3,11 @@ package gateway
 import (
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 func jsonResponse(w http.ResponseWriter, status int, v any) {
@@ -31,12 +33,23 @@ func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 	return true
 }
 
-func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler) http.Handler {
+func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler, options ...*OperatorAuth) http.Handler {
 	mux := http.NewServeMux()
+	var sessions *OperatorAuth
+	if len(options) > 0 {
+		sessions = options[0]
+	}
+	cookieToken := func(r *http.Request) string {
+		c, err := r.Cookie(operatorCookie)
+		if err != nil {
+			return ""
+		}
+		return c.Value
+	}
 	admin := func(fn http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-			if operatorToken == "" || subtle.ConstantTimeCompare([]byte(token), []byte(operatorToken)) != 1 {
+			if (operatorToken == "" || subtle.ConstantTimeCompare([]byte(token), []byte(operatorToken)) != 1) && !sessions.Authorized(cookieToken(r)) {
 				fail(w, 401, "Operator authentication required")
 				return
 			}
@@ -52,6 +65,50 @@ func Handler(e *Engine, operatorToken, expectedHost string, assets http.Handler)
 			}
 			fn(w, r, actor)
 		}
+	}
+	if sessions != nil {
+		mux.HandleFunc("POST /admin/login", func(w http.ResponseWriter, r *http.Request) {
+			var in struct {
+				Password string `json:"password"`
+				Token    string `json:"token"`
+				Remember bool   `json:"remember"`
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, 2048)
+			d := json.NewDecoder(r.Body)
+			d.DisallowUnknownFields()
+			if d.Decode(&in) != nil || d.Decode(new(any)) != io.EOF {
+				fail(w, 400, "Invalid login input")
+				return
+			}
+			value, expiry, err := sessions.Login(in.Password, in.Token, operatorToken, in.Remember)
+			if err != nil {
+				status := http.StatusInternalServerError
+				if errors.Is(err, errOperatorCredentials) {
+					status = http.StatusUnauthorized
+				}
+				if errors.Is(err, errOperatorThrottle) {
+					status = http.StatusTooManyRequests
+					w.Header().Set("Retry-After", "60")
+				}
+				fail(w, status, err.Error())
+				return
+			}
+			cookie := &http.Cookie{Name: operatorCookie, Value: value, Path: "/admin", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil}
+			if in.Remember {
+				cookie.MaxAge = 30 * 24 * 60 * 60
+				cookie.Expires = expiry
+			}
+			http.SetCookie(w, cookie)
+			jsonResponse(w, 200, map[string]any{"authenticated": true, "remembered": in.Remember, "expires_at": expiry})
+		})
+		mux.HandleFunc("POST /admin/logout", admin(func(w http.ResponseWriter, r *http.Request) {
+			if err := sessions.Logout(cookieToken(r)); err != nil {
+				fail(w, 500, "Could not end administrator session")
+				return
+			}
+			http.SetCookie(w, &http.Cookie{Name: operatorCookie, Value: "", Path: "/admin", HttpOnly: true, SameSite: http.SameSiteStrictMode, Secure: r.TLS != nil, MaxAge: -1, Expires: time.Unix(1, 0)})
+			jsonResponse(w, 200, map[string]bool{"ok": true})
+		}))
 	}
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		jsonResponse(w, 200, map[string]string{"status": "ok", "version": Version})

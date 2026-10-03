@@ -44,3 +44,11 @@ The Manifest V3 service worker requests CloudCone host access, scripting, alarms
 Authentication is the trusted extension's fixed-marker report, not independent Go observation. The ordinary Chrome tab remains open and logged in after success. The extension cannot sandbox provider traffic, prevent other tools/extensions from observing the tab, or undo a claimed secret/submitted request. Revocation stops future claims and actions observed on polling; it does not sign out of CloudCone. See docs/CHROME-EXTENSION.md for setup and evidence.
 
 The later live retries still failed with connection-closed errors even in direct Chromium navigation. The successful public-page diagnostic does not establish stable provider connectivity or a sole failure cause. Local redirect guarantees and live network availability remain separate evidence.
+
+## Console password/session authentication
+
+A separate private 0600 auth record stores PBKDF2-HMAC-SHA256 (600,000 iterations, random 16-byte salt) and hashes of random browser-session tokens. Remembered sessions last 30 days and survive server restarts; session-only cookies last at most 12 hours on the server and do not persist in the browser. Logout removes the session before clearing its cookie. The cookie is HttpOnly, SameSite=Strict, host-only and restricted to `/admin`; it is not a raw password or operator token. Loopback HTTP is retained; no Secure flag can be promised on this HTTP origin. Existing Host/Origin/Sec-Fetch-Site validation gates the new routes. Native/CLI operator bearer authentication remains separate from browser cookies; Agent routes never accept browser cookies.
+
+A local `operator-password` CLI reads only stdin, writes a salted hash and clears browser sessions while the server is stopped. It never changes encrypted provider state, Agent tokens, grants or the native-host operator token. Login attempts are throttled after five failures in one minute; sessions are capped at 32. Auth persistence uses atomic replace and fsync before reporting success. Password/source defaults are never published.
+
+Primary references: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html and https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html (checked 2026-10-03).

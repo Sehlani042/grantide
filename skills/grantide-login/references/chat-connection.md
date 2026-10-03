@@ -31,3 +31,9 @@ An explicit `url` can replace `port_file`. The port file lets the service restar
 5. Run `--check` and `web-login --list`, then invoke the matching grant. If operator entry/selection is necessary, show that exact GUI step and ask for only the missing input. Do not leave the user to reconstruct a CLI tutorial.
 
 This registry is connection convenience, not authority or an OS sandbox. Grantide checks the token/grant owner. Cross-chat operating knowledge does not transfer another Agent's grant.
+
+## Operator GUI login
+
+The console supports a separately configured administrator password and a 30-day remembered browser session. Reuse an authenticated console tab first. A new tab in the same browser profile can use its existing cookie; another browser/profile signs in separately. Explicit logout revokes the remembered session. Do not mistake console authentication for a website password failure.
+
+The private native/API `operator.token` remains separate from the human console password and must never be placed in an Agent connection. New password setup uses the local stdin CLI while the service is stopped, only when the user requests that credential change. There is no shared/default console password in this skill.

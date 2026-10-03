@@ -31,10 +31,12 @@ func main() {
 }
 func run() error {
 	if len(os.Args) < 2 {
-		fmt.Println("Grantide · 允界\n\n  grantide serve [--demo] [--data-dir PATH] [--port PORT]\n  grantide call --service ID --method GET --path /metrics [--body JSON]\n  grantide credential --service ID --method GET --path /metrics [--wait 5m]\n  grantide credential --id REQUEST_ID\n  grantide browser-login --site ID --browser PROFILE --tab TAB_ID\n  grantide web-login --list | --grant REF [--extension] | --id RUN [--wait 30s]\n  grantide version\n\nAgent CLI reads GRANTIDE_URL and GRANTIDE_TOKEN from the environment.")
+		fmt.Println("Grantide · 允界\n\n  grantide serve [--demo] [--data-dir PATH] [--port PORT]\n  grantide call --service ID --method GET --path /metrics [--body JSON]\n  grantide credential --service ID --method GET --path /metrics [--wait 5m]\n  grantide credential --id REQUEST_ID\n  grantide browser-login --site ID --browser PROFILE --tab TAB_ID\n  grantide web-login --list | --grant REF [--extension] | --id RUN [--wait 30s]\n  grantide operator-password [--data-dir PATH] (password from stdin)\n  grantide version\n\nAgent CLI reads GRANTIDE_URL and GRANTIDE_TOKEN from the environment.")
 		return nil
 	}
 	switch os.Args[1] {
+	case "operator-password":
+		return operatorPassword(os.Args[2:])
 	case "serve":
 		return serve(os.Args[2:])
 	case "call":
@@ -88,6 +90,10 @@ func serve(args []string) error {
 	if err != nil {
 		return err
 	}
+	operatorSessions, err := gateway.OpenOperatorAuth(*dir)
+	if err != nil {
+		return err
+	}
 	engine, err := gateway.NewEngine(store, *demo)
 	if err != nil {
 		return err
@@ -126,7 +132,7 @@ func serve(args []string) error {
 		return err
 	}
 	fmt.Printf("Grantide %s\nConsole: %s\nOperator login link (private file): %s\nDemo: %t\n", gateway.Version, address, loginPath, *demo)
-	server := &http.Server{Handler: gateway.Handler(engine, operator, listener.Addr().String(), webui.Handler()), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
+	server := &http.Server{Handler: gateway.Handler(engine, operator, listener.Addr().String(), webui.Handler(), operatorSessions), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -227,5 +233,27 @@ func call(args []string) error {
 	if out.Result != nil && out.Result.Status >= 400 {
 		return fmt.Errorf("upstream returned HTTP %d", out.Result.Status)
 	}
+	return nil
+}
+
+func operatorPassword(args []string) error {
+	base, _ := os.UserConfigDir()
+	f := flag.NewFlagSet("operator-password", flag.ContinueOnError)
+	dir := f.String("data-dir", filepath.Join(base, "grantide"), "private state directory")
+	if err := f.Parse(args); err != nil {
+		return err
+	}
+	input, err := io.ReadAll(io.LimitReader(os.Stdin, 1025))
+	if err != nil {
+		return errors.New("Could not read administrator password from stdin")
+	}
+	if len(input) > 1024 {
+		return errors.New("Administrator password input too large")
+	}
+	password := strings.TrimSuffix(strings.TrimSuffix(string(input), "\n"), "\r")
+	if err := gateway.SetOperatorPassword(*dir, password); err != nil {
+		return err
+	}
+	fmt.Println("Administrator password configured; console sessions reset. Native and Agent tokens retained.")
 	return nil
 }

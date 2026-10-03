@@ -111,3 +111,9 @@ Expiry and usage count are independent: explicitly choose no expiry and/or unlim
 ## Chrome extension (development)
 
 Use `grantide web-login --grant REF --extension` to fill a saved CloudCone account in an existing Chrome tab through a paired Native Messaging host. The unpacked Manifest V3 source, macOS/Linux installation and boundaries are in [Chrome extension setup](docs/CHROME-EXTENSION.md). Existing-session account matching and real extension login are not yet validated. Chrome sessions remain in Chrome; they are separate from Codex’s in-app browser.
+
+## Console password and remembered login
+
+Configure an administrator password locally with `grantide operator-password --data-dir /absolute/private/state`, supplying the password through stdin while the service is stopped. It is stored only as a salted hash; no default password is shipped. Keep the password out of command arguments, shell history and Git. The native bridge/API operator token remains available for existing integrations.
+
+The GUI accepts the configured password. Select **Remember me · 30 days** to retain the browser session across reopened pages and server restarts. Signing out revokes that session. Other browser profiles must sign in separately. Existing Agent tokens, saved website accounts and login grants are retained. Sessions use a host-only HttpOnly/SameSite cookie on the existing loopback HTTP service; cookies are not port-isolated and same-OS-user processes remain outside the product boundary.

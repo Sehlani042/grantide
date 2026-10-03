@@ -87,3 +87,9 @@ Codex 可通过 `grantide credential` 发起申请，你在“凭证申请”页
 ## Chrome 扩展（开发版）
 
 已加入 Manifest V3 扩展，通过配对的本机 Native Messaging 组件，在 Chrome 标签页使用保存账号登录 CloudCone。Agent 使用 `web-login --grant REF --extension`；次数、冷却、撤销及失败暂停仍由允界管理。见[安装与边界](docs/CHROME-EXTENSION.md)。现有会话的账号核验与扩展实站登录尚未验证；Chrome 会话保留在 Chrome 中，与 Codex 内置浏览器分别管理。
+
+## 管理员密码与记住登录
+
+可在停止服务后，通过 `grantide operator-password --data-dir 私有数据目录` 从 stdin 设置管理员密码。密码以加盐哈希保存在本机，不提供公开默认密码；不要将密码写入命令参数、shell 历史或 Git。原有本机组件仍使用独立的 `operator.token`。
+
+登录页可勾选“记住登录 · 30 天”，同一浏览器重开页面或服务重启后无需重复输入。点击退出登录会使该会话失效；其他浏览器或 profile 需要单独登录。网站账号、AI token 和登录授权保持原样。
