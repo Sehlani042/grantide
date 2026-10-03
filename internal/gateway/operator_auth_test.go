@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestOperatorPasswordPersistenceExpiryAndRevocation(t *testing.T) {
 		t.Fatal("plaintext password stored")
 	}
 	info, _ := os.Stat(filepath.Join(dir, "operator-auth.json"))
-	if info.Mode().Perm() != 0600 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0600 {
 		t.Fatal("auth file permissions")
 	}
 	auth, err := OpenOperatorAuth(dir)
